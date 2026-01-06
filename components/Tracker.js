@@ -173,7 +173,7 @@ export default function Tracker({ onStatsUpdate }) {
         <View style={[styles.statusDot, { backgroundColor: isTrackingRef.current ? '#00E676' : '#FF6B6B' }]} />
       </View>
       
-      <View style={styles.statsContainer}>>
+      <View style={styles.statsContainer}>
         <View style={styles.statBox}>
           <Ionicons name="footsteps" size={28} color="#00D9FF" />
           <Text style={styles.statValue}>{steps}</Text>

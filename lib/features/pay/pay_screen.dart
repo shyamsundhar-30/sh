@@ -14,6 +14,7 @@ import '../../services/upi_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/sms_service.dart';
 import 'app_picker_sheet.dart';
+import 'contact_picker_sheet.dart';
 import 'payment_status_screen.dart';
 import 'qr_scan_screen.dart';
 
@@ -87,6 +88,46 @@ class _PayScreenState extends ConsumerState<PayScreen>
     WidgetsBinding.instance.addObserver(this);
     _prefillFromQr();
     _prefillFromFavorite();
+    _openContactPickerIfNeeded();
+  }
+
+  /// When in contact mode, immediately open the contact picker.
+  void _openContactPickerIfNeeded() {
+    if (widget.paymentMode == AppConstants.modeContact &&
+        widget.prefilledUpiId == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openContactPicker();
+      });
+    }
+  }
+
+  /// Show the contact picker and fill in the selected contact's details.
+  Future<void> _openContactPicker() async {
+    final picked = await ContactPickerSheet.show(context);
+    if (!mounted) return;
+
+    if (picked == null) {
+      // User dismissed without picking — go back to home
+      if (_upiIdController.text.isEmpty) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+
+    setState(() {
+      _nameController.text = picked.displayName;
+      // Build a phone-based UPI ID (most common: phone@ybl)
+      _upiIdController.text = '${picked.phone}@ybl';
+      _payeeType = MerchantDetector.classify(
+        upiId: _upiIdController.text,
+        payeeName: picked.displayName,
+      );
+    });
+
+    ref.read(paymentProvider.notifier).onManualEntry(
+          payeeUpiId: _upiIdController.text,
+          payeeName: picked.displayName,
+        );
   }
 
   /// Pre-fill from favorites strip (when user taps a frequent payee)
@@ -1011,8 +1052,53 @@ class _PayScreenState extends ConsumerState<PayScreen>
               validator: Validators.note,
             ),
 
-            // UPI ID & Name (manual entry only)
+            // UPI ID & Name (manual / contact entry)
             if (widget.qrData == null) ...[
+              // Pick from Contacts button (contact mode)
+              if (widget.paymentMode == AppConstants.modeContact) ...[
+                InkWell(
+                  onTap: _openContactPicker,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: AppTheme.primary.withValues(alpha: 0.25),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.contacts_rounded,
+                            color: AppTheme.primary, size: 22),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _nameController.text.isNotEmpty
+                                ? 'Paying ${_nameController.text}'
+                                : 'Pick from Contacts',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyLarge
+                                ?.copyWith(
+                                  color: AppTheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                        Icon(Icons.swap_horiz_rounded,
+                            color: AppTheme.primary.withValues(alpha: 0.6),
+                            size: 20),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+
               const SizedBox(height: 24),
               Text('Payee UPI ID',
                   style: Theme.of(context).textTheme.titleMedium),

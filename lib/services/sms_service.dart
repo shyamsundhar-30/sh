@@ -245,29 +245,42 @@ class SmsService {
   /// - "credited by SENDER NAME"
   /// - "received from SENDER NAME"
   /// - "from PERSON NAME-UPI"
+  /// - "Info: UPI/P2P/412345678901/JOHN DOE/person@ybl/SBI"
+  /// - "VPA person@ybl (JOHN DOE)"
   static String? extractPayeeName(String text) {
     final patterns = [
-      // "to PERSON via UPI" or "to PERSON UPI"
-      RegExp(r'(?:to|for)\s+([A-Z][A-Za-z\s]+?)\s*(?:via|UPI|upi|IMPS|imps|NEFT|neft)',
+      // "Info: UPI/.../PERSON NAME/vpa@bank" — SBI, HDFC, ICICI style
+      // Captures the name field between the ref number and the VPA
+      RegExp(r'(?:Info|info)\s*:?\s*UPI/[A-Za-z0-9]+/\d+/([A-Za-z][A-Za-z\s.]+?)/[a-zA-Z0-9._-]+@',
           caseSensitive: false),
-      // "from PERSON via UPI" (for credits)
-      RegExp(r'(?:from|by)\s+([A-Z][A-Za-z\s]+?)\s*(?:via|UPI|upi|IMPS|imps|NEFT|neft)',
+      // "UPI/P2P/ref/PERSON NAME/vpa" or "UPI/P2M/ref/MERCHANT/vpa"
+      RegExp(r'UPI/[A-Za-z0-9]+/\d+/([A-Za-z][A-Za-z\s.]{1,30})/[a-zA-Z0-9._-]+@',
           caseSensitive: false),
-      // "to PERSON Ref" or "from PERSON Ref"
-      RegExp(r'(?:to|from|by)\s+([A-Z][A-Za-z\s]{2,25})\s*(?:Ref|ref|REF)',
+      // "to PERSON via UPI" or "to PERSON UPI" (greedy, relaxed first char)
+      RegExp(r'(?:to|for)\s+([A-Za-z][A-Za-z\s.]+)\s+(?:via\s+)?(?:UPI|IMPS|NEFT)',
           caseSensitive: false),
-      // "to VPA person@bank"
-      RegExp(r'(?:to|from)\s+(?:VPA\s+)?([a-z0-9.]+@[a-z]+)',
+      // "from PERSON via UPI" (for credits) — greedy
+      RegExp(r'(?:from|by)\s+([A-Za-z][A-Za-z\s.]+)\s+(?:via\s+)?(?:UPI|IMPS|NEFT)',
+          caseSensitive: false),
+      // "to PERSON Ref" or "from PERSON Ref" — greedy, relaxed
+      RegExp(r'(?:to|from|by)\s+([A-Za-z][A-Za-z\s.]{2,30})\s*(?:Ref|ref|REF|UPI)',
+          caseSensitive: false),
+      // "VPA person@bank (PERSON NAME)" — parenthesized name after VPA
+      RegExp(r'(?:VPA\s+)?[a-zA-Z0-9._-]+@[a-zA-Z]+\s*\(([A-Za-z][A-Za-z\s.]+?)\)',
+          caseSensitive: false),
+      // "to VPA person@bank" — extract VPA as fallback
+      RegExp(r'(?:to|from)\s+(?:VPA\s+)?([a-zA-Z0-9._-]+@[a-zA-Z]+)',
           caseSensitive: false),
     ];
 
     for (final pattern in patterns) {
       final match = pattern.firstMatch(text);
       if (match != null) {
-        final name = match.group(1)?.trim();
-        if (name != null && name.length >= 2 && name.length <= 40) {
-          return name;
-        }
+        var name = match.group(1)?.trim();
+        if (name == null || name.length < 2 || name.length > 40) continue;
+        // Clean trailing prepositions / junk that greedy match may capture
+        name = name.replaceAll(RegExp(r'\s+(via|on|in|at|is|was|has|the)$', caseSensitive: false), '').trim();
+        if (name.length >= 2) return name;
       }
     }
     return null;

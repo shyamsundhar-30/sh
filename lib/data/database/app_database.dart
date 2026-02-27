@@ -1,8 +1,5 @@
-import 'dart:io';
 import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
+import 'package:drift_flutter/drift_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
 import 'tables/transactions.dart';
@@ -13,7 +10,7 @@ part 'app_database.g.dart';
 
 @DriftDatabase(tables: [Transactions, Payees, Budgets])
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  AppDatabase() : super(driftDatabase(name: AppConstants.dbName));
 
   // Bump this when schema changes
   @override
@@ -284,6 +281,19 @@ class AppDatabase extends _$AppDatabase {
     };
   }
 
+  /// Get all successful transactions for a specific month
+  Future<List<Transaction>> getMonthTransactions(int year, int month) {
+    final start = DateTime(year, month, 1);
+    final end = DateTime(year, month + 1, 0, 23, 59, 59);
+    return (select(transactions)
+          ..where((t) =>
+              t.status.equals(AppConstants.statusSuccess) &
+              t.createdAt.isBiggerOrEqualValue(start) &
+              t.createdAt.isSmallerOrEqualValue(end))
+          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+        .get();
+  }
+
   /// Delete a transaction
   Future<int> deleteTransaction(String id) =>
       (delete(transactions)..where((t) => t.id.equals(id))).go();
@@ -338,6 +348,12 @@ class AppDatabase extends _$AppDatabase {
         .write(PayeesCompanion(name: Value(name)));
   }
 
+  /// Update payee phone number
+  Future<void> updatePayeePhone(String payeeId, String phone) async {
+    await (update(payees)..where((p) => p.id.equals(payeeId)))
+        .write(PayeesCompanion(phone: Value(phone)));
+  }
+
   /// Delete a payee
   Future<int> deletePayee(String id) =>
       (delete(payees)..where((p) => p.id.equals(id))).go();
@@ -373,10 +389,4 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
-LazyDatabase _openConnection() {
-  return LazyDatabase(() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dir.path, AppConstants.dbName));
-    return NativeDatabase.createInBackground(file);
-  });
-}
+

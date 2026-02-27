@@ -42,6 +42,9 @@ class SmsSyncService {
       final lastSync = await _getLastSyncTime();
       debugPrint('PayTrace SMS Sync: Starting since $lastSync');
 
+      // 2b. Pre-load device contacts once for O(1) name lookups
+      await ContactLookupService.preloadContacts();
+
       // 3. Read all SMS since last sync
       final smsList = await SmsService.readRecentSms(since: lastSync);
       debugPrint('PayTrace SMS Sync: Found ${smsList.length} bank SMS');
@@ -335,12 +338,36 @@ class SmsSyncService {
 
   /// Extract UPI ID from SMS body.
   static String? _extractUpiId(String text) {
-    // Match UPI VPA patterns: word@bank (but exclude email-like patterns)
+    // ── Priority 1: Extract VPA from Info: field ──
+    // "Info: UPI/P2P/412345678901/JOHN DOE/person@ybl/SBI"
+    // "Info: UPI/DR/412345678901/person@ybl/SBI"
+    final infoPattern = RegExp(
+      r'(?:Info|info)\s*:?.*?([a-zA-Z0-9._-]+@(?:ybl|upi|apl|okhdfcbank|okicici|oksbi|okaxis|paytm|fbl|ibl|axl|sbi|waicici|wahdfcbank|barodampay|unionbankofindia|kotak|indus|federal|csbpay|dbs|rbl|allbank|aubank|equitas|idfcbank|hsbc|bandhan|jupiteraxis)[a-z]*)',
+      caseSensitive: false,
+    );
+    final infoMatch = infoPattern.firstMatch(text);
+    if (infoMatch != null) return infoMatch.group(1);
+
+    // ── Priority 2: UPI slash-separated format anywhere in text ──
+    // "UPI/P2P/412345678901/person@ybl" or "UPI/DR/ref/person@bank"
+    final slashPattern = RegExp(
+      r'UPI/[A-Za-z0-9]+/\d+/(?:[^/]+/)?([a-zA-Z0-9._-]+@[a-zA-Z]{3,})',
+      caseSensitive: false,
+    );
+    final slashMatch = slashPattern.firstMatch(text);
+    if (slashMatch != null) {
+      final candidate = slashMatch.group(1)!;
+      if (!candidate.contains('.com') && !candidate.contains('.in')) {
+        return candidate;
+      }
+    }
+
+    // ── Priority 3: Known bank VPA handles ──
     final pattern = RegExp(r'\b([a-zA-Z0-9._-]+@(?:ybl|upi|apl|okhdfcbank|okicici|oksbi|okaxis|paytm|fbl|ibl|axl|sbi|waicici|wahdfcbank|barodampay|unionbankofindia|kotak|indus|federal|csbpay|dbs|rbl|allbank|aubank|equitas|idfcbank|hsbc|bandhan|jupiteraxis)[a-z]*)');
     final match = pattern.firstMatch(text);
     if (match != null) return match.group(1);
 
-    // Broader UPI pattern (3+ char handle)
+    // ── Priority 4: Broader UPI pattern (3+ char handle) ──
     final broad = RegExp(r'\b([a-zA-Z0-9._-]+@[a-zA-Z]{3,})\b');
     final broadMatch = broad.firstMatch(text);
     if (broadMatch != null) {
@@ -358,20 +385,43 @@ class SmsSyncService {
   }
 
   /// Upsert payee record.
+  /// On insert: sets name, UPI ID, phone (if extractable).
+  /// On update: upgrades name if the existing one is a bank code, and sets
+  ///            phone if it was previously missing.
   static Future<void> _upsertPayee(
     AppDatabase db,
     String payeeUpiId,
     String payeeName,
     DateTime timestamp,
   ) async {
+    // Extract phone number from UPI ID (may be null for merchant VPAs)
+    final phone = ContactLookupService.extractPhoneNumber(payeeUpiId);
+
     final existing = await db.getPayeeByUpiId(payeeUpiId);
     if (existing != null) {
+      // Always increment count and update last-paid
       await db.incrementPayeeCount(existing.id);
+
+      // Upgrade name if the current one is a bank code or generic
+      final existingIsBankName = _bankNames.contains(existing.name);
+      final newIsBetter = !_bankNames.contains(payeeName) &&
+          payeeName != payeeUpiId &&
+          payeeName.length > existing.name.length;
+      if (existingIsBankName || (newIsBetter && existing.name.length <= 4)) {
+        await db.updatePayeeName(existing.id, payeeName);
+        debugPrint('PayTrace SMS Sync: Upgraded payee name "${existing.name}" → "$payeeName"');
+      }
+
+      // Set phone if previously missing
+      if (phone != null && (existing.phone == null || existing.phone!.isEmpty)) {
+        await db.updatePayeePhone(existing.id, phone);
+      }
     } else {
       await db.upsertPayee(PayeesCompanion(
         id: Value(_uuid.v4()),
         upiId: Value(payeeUpiId),
         name: Value(payeeName),
+        phone: phone != null ? Value(phone) : const Value.absent(),
         transactionCount: const Value(1),
         lastPaidAt: Value(timestamp),
       ));

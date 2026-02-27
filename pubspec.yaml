@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.10.4
+  sdk: ^3.9.2
 
 dependencies:
   flutter:
@@ -21,6 +21,7 @@ dependencies:
 
   # Database (SQLite ORM)
   drift: ^2.22.1
+  drift_flutter: ^0.2.0
   sqlite3_flutter_libs: ^0.5.28
   path_provider: ^2.1.5
   path: ^1.9.1

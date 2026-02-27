@@ -88,30 +88,38 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 16),
-            SegmentedButton<ThemeMode>(
-              segments: const [
-                ButtonSegment(
-                  value: ThemeMode.system,
-                  icon: Icon(Icons.phone_android_rounded, size: 18),
-                  label: Text('System'),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<ThemeMode>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(
+                    value: ThemeMode.system,
+                    icon: Icon(Icons.phone_android_rounded, size: 16),
+                    label: Text('System'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.light,
+                    icon: Icon(Icons.light_mode_rounded, size: 16),
+                    label: Text('Light'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.dark,
+                    icon: Icon(Icons.dark_mode_rounded, size: 16),
+                    label: Text('Dark'),
+                  ),
+                ],
+                selected: {current},
+                onSelectionChanged: (modes) {
+                  ref.read(themeModeProvider.notifier).setThemeMode(modes.first);
+                },
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(horizontal: 12),
+                  ),
                 ),
-                ButtonSegment(
-                  value: ThemeMode.light,
-                  icon: Icon(Icons.light_mode_rounded, size: 18),
-                  label: Text('Light'),
-                ),
-                ButtonSegment(
-                  value: ThemeMode.dark,
-                  icon: Icon(Icons.dark_mode_rounded, size: 18),
-                  label: Text('Dark'),
-                ),
-              ],
-              selected: {current},
-              onSelectionChanged: (modes) {
-                ref.read(themeModeProvider.notifier).setThemeMode(modes.first);
-              },
-              style: ButtonStyle(
-                visualDensity: VisualDensity.compact,
               ),
             ),
           ],

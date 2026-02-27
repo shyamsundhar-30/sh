@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 
@@ -54,6 +55,12 @@ class _ContactPickerSheetState extends State<ContactPickerSheet> {
   }
 
   Future<void> _loadContacts() async {
+    // flutter_contacts is not available on web
+    if (kIsWeb) {
+      if (mounted) setState(() { _permissionDenied = true; _loading = false; });
+      return;
+    }
+
     final hasPermission =
         await FlutterContacts.requestPermission(readonly: true);
 
@@ -286,7 +293,7 @@ class _ContactPickerSheetState extends State<ContactPickerSheet> {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       itemCount: _filtered.length,
-      separatorBuilder: (_, __) => Divider(
+      separatorBuilder: (_, _) => Divider(
         height: 1,
         indent: 68,
         color: isDark ? AppTheme.borderDark : AppTheme.borderLight,

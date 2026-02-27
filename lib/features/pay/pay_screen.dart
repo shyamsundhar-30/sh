@@ -804,16 +804,17 @@ class _PayScreenState extends ConsumerState<PayScreen>
               onPressed: () async {
                 // Try scanning SMS one more time
                 final sms = await _quickSmsScan();
-                if (sms != null && !_autoConfirmed && mounted) {
+                if (!mounted) return;
+                if (sms != null && !_autoConfirmed) {
                   _autoConfirmed = true;
                   _notificationSub?.cancel();
                   _smsSub?.cancel();
-                  Navigator.of(ctx).pop();
+                  if (ctx.mounted) Navigator.of(ctx).pop();
                   _onAutoConfirmed(
                     upiRefNumber: sms.refNumber,
                     detectedAmount: sms.amount,
                   );
-                } else if (mounted) {
+                } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('No payment SMS found yet. Please enter manually.'),
@@ -844,6 +845,7 @@ class _PayScreenState extends ConsumerState<PayScreen>
                   );
                   amountController.dispose();
                   refController.dispose();
+                  if (!ctx.mounted) return;
                   Navigator.of(ctx).pop();
                   if (!mounted) return;
                   _navigateToStatus();

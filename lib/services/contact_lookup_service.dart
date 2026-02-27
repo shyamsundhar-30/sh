@@ -27,9 +27,13 @@ class ContactLookupService {
   static Future<void> preloadContacts() async {
     if (_contactMap != null) return; // Already loaded this session
 
-    if (_hasPermission == null) {
-      _hasPermission = await FlutterContacts.requestPermission(readonly: true);
+    // flutter_contacts is not available on web
+    if (kIsWeb) {
+      _contactMap = {};
+      return;
     }
+
+    _hasPermission ??= await FlutterContacts.requestPermission(readonly: true);
     if (_hasPermission != true) {
       debugPrint('PayTrace Contacts: No contacts permission');
       _contactMap = {};

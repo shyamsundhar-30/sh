@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -32,7 +31,7 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
   static const _storage = FlutterSecureStorage();
   static const _key = 'theme_mode';
 
-  ThemeModeNotifier([ThemeMode initial = ThemeMode.dark]) : super(initial);
+  ThemeModeNotifier([super.initial = ThemeMode.dark]);
 
   Future<void> setThemeMode(ThemeMode mode) async {
     state = mode;

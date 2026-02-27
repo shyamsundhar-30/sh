@@ -153,7 +153,7 @@ class SettingsScreen extends ConsumerWidget {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
       ),
-      error: (_, __) => _SettingsTile(
+      error: (_, _) => _SettingsTile(
         icon: Icons.account_balance_wallet_outlined,
         title: 'Monthly Budget',
         subtitle: 'Error loading budget',

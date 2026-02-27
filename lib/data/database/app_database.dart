@@ -10,7 +10,14 @@ part 'app_database.g.dart';
 
 @DriftDatabase(tables: [Transactions, Payees, Budgets])
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(driftDatabase(name: AppConstants.dbName));
+  AppDatabase()
+      : super(driftDatabase(
+          name: AppConstants.dbName,
+          web: DriftWebOptions(
+            sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+            driftWorker: Uri.parse('drift_worker.js'),
+          ),
+        ));
 
 
 

@@ -311,7 +311,15 @@ class SettingsScreen extends ConsumerWidget {
                     }
                     return;
                   }
-                  await ExportService.exportToCsv(transactions);
+                  try {
+                    await ExportService.exportToCsv(transactions);
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Export failed: $e')),
+                      );
+                    }
+                  }
                 },
                 icon: const Icon(Icons.download_rounded, size: 20),
                 label: const Text('Export All Transactions'),
@@ -340,7 +348,15 @@ class SettingsScreen extends ConsumerWidget {
                     }
                     return;
                   }
-                  await ExportService.exportToCsv(transactions);
+                  try {
+                    await ExportService.exportToCsv(transactions);
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Export failed: $e')),
+                      );
+                    }
+                  }
                 },
                 icon: const Icon(Icons.calendar_month_rounded, size: 20),
                 label: const Text('Export This Month'),

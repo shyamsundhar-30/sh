@@ -1,18 +1,23 @@
 import 'package:csv/csv.dart';
-import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:path_provider/path_provider.dart';
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../data/database/app_database.dart';
 import '../core/utils/formatters.dart';
+import 'export_helper_stub.dart'
+    if (dart.library.io) 'export_helper_io.dart' as helper;
 
 /// Export transactions to CSV for external use
 class ExportService {
   ExportService._();
 
-  /// Export list of transactions to CSV and share
+  /// Export list of transactions to CSV and share.
+  /// On web, throws [UnsupportedError] — callers should check [kIsWeb] first.
   static Future<void> exportToCsv(List<Transaction> transactions) async {
+    if (kIsWeb) {
+      throw UnsupportedError(
+          'CSV export is not supported on web. Use a mobile device.');
+    }
+
     final headers = [
       'Date',
       'Time',
@@ -43,14 +48,6 @@ class ExportService {
 
     final csvData = const ListToCsvConverter().convert([headers, ...rows]);
 
-    final dir = await getTemporaryDirectory();
-    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final file = File('${dir.path}/paytrace_export_$timestamp.csv');
-    await file.writeAsString(csvData);
-
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      subject: 'PayTrace Transactions Export',
-    );
+    await helper.writeAndShareCsv(csvData);
   }
 }

@@ -105,10 +105,18 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   tooltip: 'Export CSV',
                   onPressed: txns.isEmpty
                       ? null
-                      : () {
-                          final filtered = _applyFilters(txns);
-                          ExportService.exportToCsv(
-                              filtered.isEmpty ? txns : filtered);
+                      : () async {
+                          try {
+                            final filtered = _applyFilters(txns);
+                            await ExportService.exportToCsv(
+                                filtered.isEmpty ? txns : filtered);
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Export failed: $e')),
+                              );
+                            }
+                          }
                         },
                 ),
               ) ??

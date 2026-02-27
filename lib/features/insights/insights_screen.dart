@@ -19,20 +19,27 @@ final insightsProvider = FutureProvider.autoDispose<InsightsData?>((ref) async {
   final db = ref.watch(databaseProvider);
   final now = DateTime.now();
 
-  // Fetch current month transactions
-  final currentTxns = await db.getMonthTransactions(now.year, now.month);
+  // Fetch current month + previous 3 months + budget in parallel
+  final prevDates = [
+    for (int i = 1; i <= 3; i++) DateTime(now.year, now.month - i, 1),
+  ];
+
+  final results = await Future.wait([
+    db.getMonthTransactions(now.year, now.month),
+    for (final d in prevDates) db.getMonthTransactions(d.year, d.month),
+    db.getBudget(now.year, now.month),
+  ]);
+
+  final currentTxns = results[0] as List<Transaction>;
   if (currentTxns.isEmpty) return null;
 
-  // Fetch previous 3 months transactions for drift analysis
-  final prevMonths = <List<Transaction>>[];
-  for (int i = 1; i <= 3; i++) {
-    final prevDate = DateTime(now.year, now.month - i, 1);
-    final txns = await db.getMonthTransactions(prevDate.year, prevDate.month);
-    if (txns.isNotEmpty) prevMonths.add(txns);
-  }
+  final prevMonths = <List<Transaction>>[
+    for (int i = 1; i <= 3; i++)
+      if ((results[i] as List<Transaction>).isNotEmpty)
+        results[i] as List<Transaction>,
+  ];
 
-  // Fetch budget
-  final budget = await db.getBudget(now.year, now.month);
+  final budget = results[4] as Budget?;
 
   // Run all engines
   final velocity = SpendVelocityEngine.analyze(

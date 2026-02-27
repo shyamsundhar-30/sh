@@ -12,9 +12,11 @@ part 'app_database.g.dart';
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: AppConstants.dbName));
 
+
+
   // Bump this when schema changes
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -24,8 +26,27 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(budgets);
           }
           if (from < 3) {
+            try {
+              await m.database.customStatement(
+                "ALTER TABLE transactions ADD COLUMN direction TEXT NOT NULL DEFAULT 'DEBIT'",
+              );
+            } catch (_) {
+              // Column may already exist from a partial migration
+            }
+          }
+          if (from < 4) {
+            // Add indices for production-level query performance
             await m.database.customStatement(
-              "ALTER TABLE transactions ADD COLUMN direction TEXT NOT NULL DEFAULT 'DEBIT'",
+              'CREATE INDEX IF NOT EXISTS idx_txn_created_at ON transactions(created_at)',
+            );
+            await m.database.customStatement(
+              'CREATE INDEX IF NOT EXISTS idx_txn_payee_upi ON transactions(payee_upi_id)',
+            );
+            await m.database.customStatement(
+              'CREATE INDEX IF NOT EXISTS idx_txn_status_dir_date ON transactions(status, direction, created_at)',
+            );
+            await m.database.customStatement(
+              'CREATE INDEX IF NOT EXISTS idx_payee_upi ON payees(upi_id)',
             );
           }
         },
@@ -137,14 +158,20 @@ class AppDatabase extends _$AppDatabase {
           .get();
 
   /// Search transactions by payee name or UPI ID
-  Future<List<Transaction>> searchTransactions(String query) =>
-      (select(transactions)
-            ..where((t) =>
-                t.payeeName.like('%$query%') |
-                t.payeeUpiId.like('%$query%') |
-                t.transactionNote.like('%$query%'))
-            ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
-          .get();
+  Future<List<Transaction>> searchTransactions(String query) {
+    // Escape LIKE wildcards to prevent unintended matches
+    final escaped = query
+        .replaceAll('\\', '\\\\')
+        .replaceAll('%', '\\%')
+        .replaceAll('_', '\\_');
+    return (select(transactions)
+          ..where((t) =>
+              t.payeeName.like('%$escaped%') |
+              t.payeeUpiId.like('%$escaped%') |
+              t.transactionNote.like('%$escaped%'))
+          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+        .get();
+  }
 
   /// Get all transactions for a specific payee
   Future<List<Transaction>> getTransactionsByPayee(String upiId) =>
@@ -326,19 +353,27 @@ class AppDatabase extends _$AppDatabase {
           .get();
 
   /// Search payees
-  Future<List<Payee>> searchPayees(String query) =>
-      (select(payees)
-            ..where((p) =>
-                p.name.like('%$query%') | p.upiId.like('%$query%'))
-            ..orderBy([(p) => OrderingTerm.desc(p.transactionCount)]))
-          .get();
+  Future<List<Payee>> searchPayees(String query) {
+    final escaped = query
+        .replaceAll('\\', '\\\\')
+        .replaceAll('%', '\\%')
+        .replaceAll('_', '\\_');
+    return (select(payees)
+          ..where((p) =>
+              p.name.like('%$escaped%') | p.upiId.like('%$escaped%'))
+          ..orderBy([(p) => OrderingTerm.desc(p.transactionCount)]))
+        .get();
+  }
 
   /// Increment payee transaction count
   Future<void> incrementPayeeCount(String payeeId) async {
     await customStatement(
       'UPDATE payees SET transaction_count = transaction_count + 1, '
       'last_paid_at = ? WHERE id = ?',
-      [DateTime.now().millisecondsSinceEpoch, payeeId],
+      [
+        Variable.withDateTime(DateTime.now()),
+        Variable.withString(payeeId),
+      ],
     );
   }
 

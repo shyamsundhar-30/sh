@@ -115,18 +115,20 @@ class TransactionDetailScreen extends ConsumerWidget {
                       children: [
                         Expanded(
                           child: OutlinedButton.icon(
-                            onPressed: () {
-                              ref.read(databaseProvider)
+                            onPressed: () async {
+                              await ref.read(databaseProvider)
                                   .updateTransactionStatus(
                                 id: transaction.id,
                                 status: AppConstants.statusFailure,
                               );
-                              Navigator.of(context).pop();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Marked as failed'),
-                                ),
-                              );
+                              if (context.mounted) {
+                                Navigator.of(context).pop();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Marked as failed'),
+                                  ),
+                                );
+                              }
                             },
                             icon: const Icon(Icons.close, size: 18),
                             label: const Text('No'),
@@ -138,19 +140,21 @@ class TransactionDetailScreen extends ConsumerWidget {
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: () {
-                              ref.read(databaseProvider)
+                            onPressed: () async {
+                              await ref.read(databaseProvider)
                                   .updateTransactionStatus(
                                 id: transaction.id,
                                 status: AppConstants.statusSuccess,
                               );
-                              Navigator.of(context).pop();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Marked as paid!'),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
+                              if (context.mounted) {
+                                Navigator.of(context).pop();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Marked as paid!'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              }
                             },
                             icon: const Icon(Icons.check, size: 18),
                             label: const Text('Yes, paid'),
@@ -339,8 +343,8 @@ class TransactionDetailScreen extends ConsumerWidget {
     }
   }
 
-  void _handleMenuAction(
-      BuildContext context, WidgetRef ref, String action) {
+  Future<void> _handleMenuAction(
+      BuildContext context, WidgetRef ref, String action) async {
     switch (action) {
       case 'copy':
         final id = transaction.upiTxnId ?? transaction.transactionRef;
@@ -363,28 +367,32 @@ class TransactionDetailScreen extends ConsumerWidget {
         break;
 
       case 'mark_success':
-        ref.read(databaseProvider).updateTransactionStatus(
+        await ref.read(databaseProvider).updateTransactionStatus(
               id: transaction.id,
               status: AppConstants.statusSuccess,
             );
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Marked as paid!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        if (context.mounted) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Marked as paid!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
         break;
 
       case 'mark_failed':
-        ref.read(databaseProvider).updateTransactionStatus(
+        await ref.read(databaseProvider).updateTransactionStatus(
               id: transaction.id,
               status: AppConstants.statusFailure,
             );
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Marked as failed')),
-        );
+        if (context.mounted) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Marked as failed')),
+          );
+        }
         break;
     }
   }
@@ -438,10 +446,12 @@ class TransactionDetailScreen extends ConsumerWidget {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              ref.read(databaseProvider).deleteTransaction(transaction.id);
-              Navigator.of(context).pop(); // dialog
-              Navigator.of(context).pop(); // detail screen
+            onPressed: () async {
+              await ref.read(databaseProvider).deleteTransaction(transaction.id);
+              if (context.mounted) {
+                Navigator.of(context).pop(); // dialog
+                Navigator.of(context).pop(); // detail screen
+              }
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete'),

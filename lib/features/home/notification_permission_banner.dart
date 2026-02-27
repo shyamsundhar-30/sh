@@ -16,6 +16,9 @@ final smsPermissionProvider = FutureProvider<bool>((ref) {
 class NotificationPermissionBanner extends ConsumerWidget {
   const NotificationPermissionBanner({super.key});
 
+  /// Static flag to prevent calling platform methods on every rebuild.
+  static bool _listenersActivated = false;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final smsAsync = ref.watch(smsPermissionProvider);
@@ -24,16 +27,15 @@ class NotificationPermissionBanner extends ConsumerWidget {
     final hasSms = smsAsync.valueOrNull ?? false;
     final hasNotif = notifAsync.valueOrNull ?? false;
 
-    // If both permissions granted, ensure listeners are active
+    // If both permissions granted, ensure listeners are active (once)
     if (hasSms && hasNotif) {
-      _ensureListenersActive();
+      _ensureListenersActiveOnce();
       return const SizedBox.shrink();
     }
 
     // If at least SMS is granted, ensure SMS stream + start listeners
     if (hasSms) {
-      SmsService.bankSmsStream; // ensure listening
-      _ensureListenersActive();
+      _ensureListenersActiveOnce();
     }
 
     // Show banner if either permission is missing
@@ -45,7 +47,9 @@ class NotificationPermissionBanner extends ConsumerWidget {
     return _buildBanner(context, ref, hasSms: hasSms, hasNotif: hasNotif);
   }
 
-  void _ensureListenersActive() {
+  void _ensureListenersActiveOnce() {
+    if (_listenersActivated) return;
+    _listenersActivated = true;
     UpiService.rebindNotificationListener();
     NotificationService.paymentNotifications;
     SmsService.bankSmsStream;

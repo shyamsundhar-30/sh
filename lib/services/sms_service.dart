@@ -40,6 +40,7 @@ class SmsService {
 
   static final _controller = StreamController<BankSms>.broadcast();
   static bool _platformListening = false;
+  static StreamSubscription<dynamic>? _platformSubscription;
 
   /// Ensures SMS EventChannel subscription is active.
   static void _ensurePlatformListening() {
@@ -48,7 +49,9 @@ class SmsService {
 
     debugPrint('PayTrace: Subscribing to SMS EventChannel');
 
-    _eventChannel.receiveBroadcastStream().listen(
+    // Cancel any stale subscription before creating a new one
+    _platformSubscription?.cancel();
+    _platformSubscription = _eventChannel.receiveBroadcastStream().listen(
       (event) {
         debugPrint('PayTrace: Raw SMS event: $event');
         try {
@@ -62,10 +65,12 @@ class SmsService {
       },
       onError: (e) {
         debugPrint('PayTrace: SMS EventChannel error: $e — will reconnect');
+        _platformSubscription = null;
         _platformListening = false;
       },
       onDone: () {
         debugPrint('PayTrace: SMS EventChannel closed — will reconnect');
+        _platformSubscription = null;
         _platformListening = false;
       },
     );

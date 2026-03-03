@@ -57,7 +57,6 @@ class TransactionDetailScreen extends ConsumerWidget {
                   dense: true,
                 ),
               ),
-<<<<<<< HEAD
               if (transaction.paymentMode == 'SMS_IMPORT')
                 const PopupMenuItem(
                   value: 'edit_name',
@@ -67,8 +66,6 @@ class TransactionDetailScreen extends ConsumerWidget {
                     dense: true,
                   ),
                 ),
-=======
->>>>>>> b320780f40711318dbd695d92961461caf4e7088
               const PopupMenuItem(
                 value: 'copy',
                 child: ListTile(
@@ -333,13 +330,10 @@ class TransactionDetailScreen extends ConsumerWidget {
         return 'Contact Payment';
       case AppConstants.modeManual:
         return 'Manual Entry';
-<<<<<<< HEAD
       case 'SMS_IMPORT':
         return transaction.direction == 'CREDIT'
             ? 'Received via SMS'
             : 'Detected via SMS';
-=======
->>>>>>> b320780f40711318dbd695d92961461caf4e7088
       default:
         return transaction.paymentMode;
     }
@@ -360,13 +354,10 @@ class TransactionDetailScreen extends ConsumerWidget {
         _showCategoryPicker(context, ref);
         break;
 
-<<<<<<< HEAD
       case 'edit_name':
         _showEditNameDialog(context, ref);
         break;
 
-=======
->>>>>>> b320780f40711318dbd695d92961461caf4e7088
       case 'delete':
         _confirmDelete(context, ref);
         break;
@@ -459,7 +450,6 @@ class TransactionDetailScreen extends ConsumerWidget {
       ),
     );
   }
-<<<<<<< HEAD
 
   /// Show dialog to edit the payee/payer name for SMS-imported transactions.
   /// The edited name is saved to both the transaction and the payee record
@@ -534,6 +524,4 @@ class TransactionDetailScreen extends ConsumerWidget {
       ),
     );
   }
-=======
->>>>>>> b320780f40711318dbd695d92961461caf4e7088
 }

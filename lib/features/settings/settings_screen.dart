@@ -26,36 +26,36 @@ class SettingsScreen extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
           // ─── Appearance Section ───
-          _SectionHeader(title: 'Appearance'),
+          const _SectionHeader(title: 'Appearance'),
           _buildThemeSelector(context, ref, themeMode),
 
           const SizedBox(height: 8),
 
           // ─── Budget Section ───
-          _SectionHeader(title: 'Budget'),
+          const _SectionHeader(title: 'Budget'),
           _buildBudgetTile(context, ref, budgetAsync, now),
 
           const SizedBox(height: 8),
 
           // ─── Data Section ───
-          _SectionHeader(title: 'Data'),
+          const _SectionHeader(title: 'Data'),
           _buildExportTile(context, ref),
 
           const SizedBox(height: 8),
 
           // ─── About Section ───
-          _SectionHeader(title: 'About'),
-          _SettingsTile(
+          const _SectionHeader(title: 'About'),
+          const _SettingsTile(
             icon: Icons.info_outline_rounded,
             title: 'PayTrace',
             subtitle: 'Version ${AppConstants.appVersion}',
-            trailing: const SizedBox.shrink(),
+            trailing: SizedBox.shrink(),
           ),
-          _SettingsTile(
+          const _SettingsTile(
             icon: Icons.favorite_outline_rounded,
             title: 'Made with Flutter',
             subtitle: 'UPI Payment Tracker',
-            trailing: const SizedBox.shrink(),
+            trailing: SizedBox.shrink(),
           ),
         ],
       ),
@@ -78,8 +78,8 @@ class SettingsScreen extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.palette_outlined,
-                    color: AppTheme.primary, size: 20),
+                const Icon(Icons.palette_outlined,
+                  color: AppTheme.primary, size: 20),
                 const SizedBox(width: 12),
                 Text(
                   'Theme',
@@ -110,7 +110,7 @@ class SettingsScreen extends ConsumerWidget {
               onSelectionChanged: (modes) {
                 ref.read(themeModeProvider.notifier).setThemeMode(modes.first);
               },
-              style: ButtonStyle(
+              style: const ButtonStyle(
                 visualDensity: VisualDensity.compact,
               ),
             ),
@@ -136,20 +136,21 @@ class SettingsScreen extends ConsumerWidget {
           onTap: () => _showBudgetSheet(context, ref, budget, now),
         );
       },
-      loading: () => _SettingsTile(
+      loading: () => const _SettingsTile(
         icon: Icons.account_balance_wallet_outlined,
         title: 'Monthly Budget',
         subtitle: 'Loading...',
-        trailing: const SizedBox(
-          width: 16, height: 16,
+        trailing: SizedBox(
+          width: 16,
+          height: 16,
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
       ),
-      error: (_, __) => _SettingsTile(
+      error: (_, __) => const _SettingsTile(
         icon: Icons.account_balance_wallet_outlined,
         title: 'Monthly Budget',
         subtitle: 'Error loading budget',
-        trailing: const SizedBox.shrink(),
+        trailing: SizedBox.shrink(),
       ),
     );
   }

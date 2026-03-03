@@ -141,8 +141,8 @@ class FilterBar extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Row(
               children: [
-                Icon(Icons.filter_list_rounded,
-                    size: 14, color: AppTheme.primary),
+                const Icon(Icons.filter_list_rounded,
+                  size: 14, color: AppTheme.primary),
                 const SizedBox(width: 4),
                 Text(
                   '$_activeFilterCount filter${_activeFilterCount > 1 ? 's' : ''} active',

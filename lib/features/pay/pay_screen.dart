@@ -748,7 +748,7 @@ class _PayScreenState extends ConsumerState<PayScreen>
         actions: [
           TextButton(
             onPressed: () async {
-              Navigator.of(ctx).pop();
+              Navigator.of(context).pop();
               await ref.read(paymentProvider.notifier).confirmPayment(
                     wasSuccessful: false,
                   );
@@ -763,11 +763,12 @@ class _PayScreenState extends ConsumerState<PayScreen>
               onPressed: () async {
                 // Try scanning SMS one more time
                 final sms = await _quickSmsScan();
+                if (!mounted) return;
                 if (sms != null && !_autoConfirmed && mounted) {
                   _autoConfirmed = true;
                   _notificationSub?.cancel();
                   _smsSub?.cancel();
-                  Navigator.of(ctx).pop();
+                  Navigator.of(context).pop();
                   _onAutoConfirmed(
                     upiRefNumber: sms.refNumber,
                     detectedAmount: sms.amount,
@@ -803,14 +804,14 @@ class _PayScreenState extends ConsumerState<PayScreen>
                   );
                   amountController.dispose();
                   refController.dispose();
-                  Navigator.of(ctx).pop();
                   if (!mounted) return;
+                  Navigator.of(context).pop();
                   _navigateToStatus();
                   return;
                 }
               }
 
-              Navigator.of(ctx).pop();
+              Navigator.of(context).pop();
               await ref.read(paymentProvider.notifier).confirmPayment(
                     wasSuccessful: true,
                     upiRefNumber: refController.text.trim().isNotEmpty
@@ -1355,7 +1356,7 @@ class _PayScreenState extends ConsumerState<PayScreen>
                     value: progress,
                     strokeWidth: 4,
                     backgroundColor: Colors.grey.withValues(alpha: 0.2),
-                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primary),
+                    valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.primary),
                   ),
                   Text(
                     '${_countdownSeconds}s',

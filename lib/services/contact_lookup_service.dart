@@ -44,9 +44,8 @@ class ContactLookupService {
     if (_cache.containsKey(phone)) return _cache[phone];
 
     // Check permission
-    if (_hasPermission == null) {
-      _hasPermission = await FlutterContacts.requestPermission(readonly: true);
-    }
+    _hasPermission ??=
+        await FlutterContacts.requestPermission(readonly: true);
     if (_hasPermission != true) {
       debugPrint('PayTrace Contacts: No contacts permission');
       return null;

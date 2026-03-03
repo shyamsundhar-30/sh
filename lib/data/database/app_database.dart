@@ -17,11 +17,7 @@ class AppDatabase extends _$AppDatabase {
 
   // Bump this when schema changes
   @override
-<<<<<<< HEAD
   int get schemaVersion => 3;
-=======
-  int get schemaVersion => 2;
->>>>>>> b320780f40711318dbd695d92961461caf4e7088
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -30,14 +26,11 @@ class AppDatabase extends _$AppDatabase {
           if (from < 2) {
             await m.createTable(budgets);
           }
-<<<<<<< HEAD
           if (from < 3) {
             await m.database.customStatement(
               "ALTER TABLE transactions ADD COLUMN direction TEXT NOT NULL DEFAULT 'DEBIT'",
             );
           }
-=======
->>>>>>> b320780f40711318dbd695d92961461caf4e7088
         },
       );
 
@@ -73,7 +66,6 @@ class AppDatabase extends _$AppDatabase {
     return result > 0;
   }
 
-<<<<<<< HEAD
   /// Update transaction payee name (for user-edited SMS imports)
   Future<bool> updateTransactionPayeeName(String id, String name) async {
     final result = await (update(transactions)
@@ -85,8 +77,6 @@ class AppDatabase extends _$AppDatabase {
     return result > 0;
   }
 
-=======
->>>>>>> b320780f40711318dbd695d92961461caf4e7088
   /// Update transaction category
   Future<bool> updateTransactionCategory(String id, String category) async {
     final result = await (update(transactions)
@@ -166,7 +156,6 @@ class AppDatabase extends _$AppDatabase {
             ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
           .get();
 
-<<<<<<< HEAD
   /// Find transaction by UPI ref number (for SMS dedup)
   Future<Transaction?> findTransactionByRef(String refNumber) =>
       (select(transactions)
@@ -183,7 +172,7 @@ class AppDatabase extends _$AppDatabase {
     required double amount,
     required DateTime timestamp,
   }) async {
-    final window = const Duration(minutes: 5);
+    const window = Duration(minutes: 5);
     final start = timestamp.subtract(window);
     final end = timestamp.add(window);
     final results = await customSelect(
@@ -209,7 +198,7 @@ class AppDatabase extends _$AppDatabase {
     required String direction,
     required DateTime timestamp,
   }) async {
-    final window = const Duration(minutes: 1);
+    const window = Duration(minutes: 1);
     final start = timestamp.subtract(window);
     final end = timestamp.add(window);
     final results = await customSelect(
@@ -230,8 +219,6 @@ class AppDatabase extends _$AppDatabase {
     return results.isNotEmpty;
   }
 
-=======
->>>>>>> b320780f40711318dbd695d92961461caf4e7088
   /// Get total spent (successful transactions only)
   Future<double> getTotalSpent() async {
     final result = await customSelect(
@@ -241,26 +228,16 @@ class AppDatabase extends _$AppDatabase {
     return result.read<double>('total');
   }
 
-<<<<<<< HEAD
   /// Get total spent in a month (DEBIT only)
-=======
-  /// Get total spent in a month
->>>>>>> b320780f40711318dbd695d92961461caf4e7088
   Future<double> getMonthlySpent(int year, int month) async {
     final start = DateTime(year, month, 1);
     final end = DateTime(year, month + 1, 0, 23, 59, 59);
     final result = await customSelect(
       'SELECT COALESCE(SUM(amount), 0) as total FROM transactions '
-<<<<<<< HEAD
       'WHERE status = ? AND direction = ? AND created_at >= ? AND created_at <= ?',
       variables: [
         Variable.withString(AppConstants.statusSuccess),
         Variable.withString('DEBIT'),
-=======
-      'WHERE status = ? AND created_at >= ? AND created_at <= ?',
-      variables: [
-        Variable.withString(AppConstants.statusSuccess),
->>>>>>> b320780f40711318dbd695d92961461caf4e7088
         Variable.withDateTime(start),
         Variable.withDateTime(end),
       ],
@@ -268,7 +245,6 @@ class AppDatabase extends _$AppDatabase {
     return result.read<double>('total');
   }
 
-<<<<<<< HEAD
   /// Get total received in a month (CREDIT only)
   Future<double> getMonthlyReceived(int year, int month) async {
     final start = DateTime(year, month, 1);
@@ -287,26 +263,16 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Get spending by category for a month (DEBIT only)
-=======
-  /// Get spending by category for a month
->>>>>>> b320780f40711318dbd695d92961461caf4e7088
   Future<Map<String, double>> getCategorySpending(int year, int month) async {
     final start = DateTime(year, month, 1);
     final end = DateTime(year, month + 1, 0, 23, 59, 59);
     final results = await customSelect(
       'SELECT category, COALESCE(SUM(amount), 0) as total FROM transactions '
-<<<<<<< HEAD
       'WHERE status = ? AND direction = ? AND created_at >= ? AND created_at <= ? '
       'GROUP BY category ORDER BY total DESC',
       variables: [
         Variable.withString(AppConstants.statusSuccess),
         Variable.withString('DEBIT'),
-=======
-      'WHERE status = ? AND created_at >= ? AND created_at <= ? '
-      'GROUP BY category ORDER BY total DESC',
-      variables: [
-        Variable.withString(AppConstants.statusSuccess),
->>>>>>> b320780f40711318dbd695d92961461caf4e7088
         Variable.withDateTime(start),
         Variable.withDateTime(end),
       ],
@@ -366,15 +332,12 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-<<<<<<< HEAD
   /// Update payee name (for user-edited names — reused by SMS sync)
   Future<void> updatePayeeName(String payeeId, String name) async {
     await (update(payees)..where((p) => p.id.equals(payeeId)))
         .write(PayeesCompanion(name: Value(name)));
   }
 
-=======
->>>>>>> b320780f40711318dbd695d92961461caf4e7088
   /// Delete a payee
   Future<int> deletePayee(String id) =>
       (delete(payees)..where((p) => p.id.equals(id))).go();

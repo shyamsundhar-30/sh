@@ -1,8 +1,5 @@
-import 'dart:io';
 import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
+import 'package:drift_flutter/drift_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
 import 'tables/transactions.dart';
@@ -13,11 +10,20 @@ part 'app_database.g.dart';
 
 @DriftDatabase(tables: [Transactions, Payees, Budgets])
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  AppDatabase()
+      : super(driftDatabase(
+          name: AppConstants.dbName,
+          web: DriftWebOptions(
+            sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+            driftWorker: Uri.parse('drift_worker.js'),
+          ),
+        ));
+
+
 
   // Bump this when schema changes
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -27,8 +33,27 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(budgets);
           }
           if (from < 3) {
+            try {
+              await m.database.customStatement(
+                "ALTER TABLE transactions ADD COLUMN direction TEXT NOT NULL DEFAULT 'DEBIT'",
+              );
+            } catch (_) {
+              // Column may already exist from a partial migration
+            }
+          }
+          if (from < 4) {
+            // Add indices for production-level query performance
             await m.database.customStatement(
-              "ALTER TABLE transactions ADD COLUMN direction TEXT NOT NULL DEFAULT 'DEBIT'",
+              'CREATE INDEX IF NOT EXISTS idx_txn_created_at ON transactions(created_at)',
+            );
+            await m.database.customStatement(
+              'CREATE INDEX IF NOT EXISTS idx_txn_payee_upi ON transactions(payee_upi_id)',
+            );
+            await m.database.customStatement(
+              'CREATE INDEX IF NOT EXISTS idx_txn_status_dir_date ON transactions(status, direction, created_at)',
+            );
+            await m.database.customStatement(
+              'CREATE INDEX IF NOT EXISTS idx_payee_upi ON payees(upi_id)',
             );
           }
         },
@@ -140,14 +165,20 @@ class AppDatabase extends _$AppDatabase {
           .get();
 
   /// Search transactions by payee name or UPI ID
-  Future<List<Transaction>> searchTransactions(String query) =>
-      (select(transactions)
-            ..where((t) =>
-                t.payeeName.like('%$query%') |
-                t.payeeUpiId.like('%$query%') |
-                t.transactionNote.like('%$query%'))
-            ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
-          .get();
+  Future<List<Transaction>> searchTransactions(String query) {
+    // Escape LIKE wildcards to prevent unintended matches
+    final escaped = query
+        .replaceAll('\\', '\\\\')
+        .replaceAll('%', '\\%')
+        .replaceAll('_', '\\_');
+    return (select(transactions)
+          ..where((t) =>
+              t.payeeName.like('%$escaped%') |
+              t.payeeUpiId.like('%$escaped%') |
+              t.transactionNote.like('%$escaped%'))
+          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+        .get();
+  }
 
   /// Get all transactions for a specific payee
   Future<List<Transaction>> getTransactionsByPayee(String upiId) =>
@@ -284,6 +315,19 @@ class AppDatabase extends _$AppDatabase {
     };
   }
 
+  /// Get all successful transactions for a specific month
+  Future<List<Transaction>> getMonthTransactions(int year, int month) {
+    final start = DateTime(year, month, 1);
+    final end = DateTime(year, month + 1, 0, 23, 59, 59);
+    return (select(transactions)
+          ..where((t) =>
+              t.status.equals(AppConstants.statusSuccess) &
+              t.createdAt.isBiggerOrEqualValue(start) &
+              t.createdAt.isSmallerOrEqualValue(end))
+          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+        .get();
+  }
+
   /// Delete a transaction
   Future<int> deleteTransaction(String id) =>
       (delete(transactions)..where((t) => t.id.equals(id))).go();
@@ -316,19 +360,27 @@ class AppDatabase extends _$AppDatabase {
           .get();
 
   /// Search payees
-  Future<List<Payee>> searchPayees(String query) =>
-      (select(payees)
-            ..where((p) =>
-                p.name.like('%$query%') | p.upiId.like('%$query%'))
-            ..orderBy([(p) => OrderingTerm.desc(p.transactionCount)]))
-          .get();
+  Future<List<Payee>> searchPayees(String query) {
+    final escaped = query
+        .replaceAll('\\', '\\\\')
+        .replaceAll('%', '\\%')
+        .replaceAll('_', '\\_');
+    return (select(payees)
+          ..where((p) =>
+              p.name.like('%$escaped%') | p.upiId.like('%$escaped%'))
+          ..orderBy([(p) => OrderingTerm.desc(p.transactionCount)]))
+        .get();
+  }
 
   /// Increment payee transaction count
   Future<void> incrementPayeeCount(String payeeId) async {
     await customStatement(
       'UPDATE payees SET transaction_count = transaction_count + 1, '
       'last_paid_at = ? WHERE id = ?',
-      [DateTime.now().millisecondsSinceEpoch, payeeId],
+      [
+        Variable.withDateTime(DateTime.now()),
+        Variable.withString(payeeId),
+      ],
     );
   }
 
@@ -336,6 +388,12 @@ class AppDatabase extends _$AppDatabase {
   Future<void> updatePayeeName(String payeeId, String name) async {
     await (update(payees)..where((p) => p.id.equals(payeeId)))
         .write(PayeesCompanion(name: Value(name)));
+  }
+
+  /// Update payee phone number
+  Future<void> updatePayeePhone(String payeeId, String phone) async {
+    await (update(payees)..where((p) => p.id.equals(payeeId)))
+        .write(PayeesCompanion(phone: Value(phone)));
   }
 
   /// Delete a payee
@@ -371,12 +429,55 @@ class AppDatabase extends _$AppDatabase {
       ));
     }
   }
+
+  // ═══════════════════════════════════════════
+  //  DAILY SPENDING (for heatmap calendar)
+  // ═══════════════════════════════════════════
+
+  /// Returns a map of day-of-month → total DEBIT amount for the given month.
+  /// e.g. {1: 350.0, 2: 0.0, 5: 1200.0, ...}
+  Future<Map<int, double>> getDailySpending(int year, int month) async {
+    final start = DateTime(year, month, 1);
+    final end = DateTime(year, month + 1, 0, 23, 59, 59);
+
+    final rows = await (select(transactions)
+          ..where((t) =>
+              t.createdAt.isBiggerOrEqualValue(start) &
+              t.createdAt.isSmallerOrEqualValue(end) &
+              t.direction.equals('DEBIT') &
+              t.status.equals('SUCCESS')))
+        .get();
+
+    final daily = <int, double>{};
+    for (final txn in rows) {
+      final day = txn.createdAt.day;
+      daily[day] = (daily[day] ?? 0) + txn.amount;
+    }
+    return daily;
+  }
+
+  /// Returns total monthly spent (DEBIT) amounts for given months.
+  /// Returns list in same order as input dates.
+  Future<List<double>> getMonthlySpendingHistory(
+      List<DateTime> months) async {
+    final results = <double>[];
+    for (final m in months) {
+      final spent = await getMonthlySpent(m.year, m.month);
+      results.add(spent);
+    }
+    return results;
+  }
+
+  /// Returns total monthly received (CREDIT) amounts for given months.
+  Future<List<double>> getMonthlyIncomeHistory(
+      List<DateTime> months) async {
+    final results = <double>[];
+    for (final m in months) {
+      final received = await getMonthlyReceived(m.year, m.month);
+      results.add(received);
+    }
+    return results;
+  }
 }
 
-LazyDatabase _openConnection() {
-  return LazyDatabase(() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dir.path, AppConstants.dbName));
-    return NativeDatabase.createInBackground(file);
-  });
-}
+

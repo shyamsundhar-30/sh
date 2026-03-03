@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../features/home/home_screen.dart';
 import '../features/history/history_screen.dart';
+import '../features/insights/insights_screen.dart';
 import '../features/settings/settings_screen.dart';
 
 /// Main app shell with bottom navigation
@@ -18,6 +19,7 @@ class _AppShellState extends State<AppShell> {
   final _screens = const [
     HomeScreen(),
     HistoryScreen(),
+    InsightsScreen(),
     SettingsScreen(),
   ];
 
@@ -41,6 +43,11 @@ class _AppShellState extends State<AppShell> {
             icon: Icon(Icons.receipt_long_outlined),
             selectedIcon: Icon(Icons.receipt_long_rounded),
             label: 'History',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.insights_outlined),
+            selectedIcon: Icon(Icons.insights_rounded),
+            label: 'Insights',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),

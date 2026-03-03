@@ -40,6 +40,7 @@ class SmsService {
 
   static final _controller = StreamController<BankSms>.broadcast();
   static bool _platformListening = false;
+  static StreamSubscription<dynamic>? _platformSubscription;
 
   /// Ensures SMS EventChannel subscription is active.
   static void _ensurePlatformListening() {
@@ -48,7 +49,9 @@ class SmsService {
 
     debugPrint('PayTrace: Subscribing to SMS EventChannel');
 
-    _eventChannel.receiveBroadcastStream().listen(
+    // Cancel any stale subscription before creating a new one
+    _platformSubscription?.cancel();
+    _platformSubscription = _eventChannel.receiveBroadcastStream().listen(
       (event) {
         debugPrint('PayTrace: Raw SMS event: $event');
         try {
@@ -62,10 +65,12 @@ class SmsService {
       },
       onError: (e) {
         debugPrint('PayTrace: SMS EventChannel error: $e — will reconnect');
+        _platformSubscription = null;
         _platformListening = false;
       },
       onDone: () {
         debugPrint('PayTrace: SMS EventChannel closed — will reconnect');
+        _platformSubscription = null;
         _platformListening = false;
       },
     );
@@ -184,14 +189,29 @@ class SmsService {
   static bool isDebitSms(BankSms sms) {
     final lower = sms.body.toLowerCase();
 
-    // Must have debit/payment indicators
-    final hasDebit = lower.contains('debit') ||
-        lower.contains('sent') ||
-        lower.contains('paid') ||
-        lower.contains('transferred') ||
+    // ── Strong debit indicators (bank-specific language) ──
+    final hasStrongDebit = lower.contains('debited') ||
         lower.contains('withdrawn') ||
+        lower.contains('transferred');
+
+    // ── Medium debit indicators (need banking context to avoid
+    //    matching non-financial SMS like "paid for Hotstar plan") ──
+    final hasMediumDebit = lower.contains('sent') ||
+        lower.contains('paid') ||
         lower.contains('purchase') ||
-        lower.contains('transaction');
+        lower.contains('debit');
+
+    // ── Banking / account context ──
+    final hasBankContext = lower.contains('a/c') ||
+        lower.contains('acct') ||
+        lower.contains('account') ||
+        lower.contains('upi') ||
+        lower.contains('imps') ||
+        lower.contains('neft') ||
+        lower.contains('txn') ||
+        lower.contains('ref no') ||
+        lower.contains('vpa') ||
+        RegExp(r'\bbank\b', caseSensitive: false).hasMatch(sms.body);
 
     // Must have some amount indicator
     final hasAmount = lower.contains('rs') ||
@@ -206,7 +226,12 @@ class SmsService {
     // Must NOT be a credit SMS
     final isCredit = isCreditSms(sms);
 
-    return !isCredit && hasAmount && (hasDebit || hasUpi);
+    // Strong debit keywords + amount → always accept.
+    // Medium debit keywords need banking context.
+    // UPI markers alone (with amount) → accept.
+    return !isCredit &&
+        hasAmount &&
+        (hasStrongDebit || (hasMediumDebit && hasBankContext) || hasUpi);
   }
 
   /// Check if an SMS looks like a credit/received transaction.
@@ -245,29 +270,42 @@ class SmsService {
   /// - "credited by SENDER NAME"
   /// - "received from SENDER NAME"
   /// - "from PERSON NAME-UPI"
+  /// - "Info: UPI/P2P/412345678901/JOHN DOE/person@ybl/SBI"
+  /// - "VPA person@ybl (JOHN DOE)"
   static String? extractPayeeName(String text) {
     final patterns = [
-      // "to PERSON via UPI" or "to PERSON UPI"
-      RegExp(r'(?:to|for)\s+([A-Z][A-Za-z\s]+?)\s*(?:via|UPI|upi|IMPS|imps|NEFT|neft)',
+      // "Info: UPI/.../PERSON NAME/vpa@bank" — SBI, HDFC, ICICI style
+      // Captures the name field between the ref number and the VPA
+      RegExp(r'(?:Info|info)\s*:?\s*UPI/[A-Za-z0-9]+/\d+/([A-Za-z][A-Za-z\s.]+?)/[a-zA-Z0-9._-]+@',
           caseSensitive: false),
-      // "from PERSON via UPI" (for credits)
-      RegExp(r'(?:from|by)\s+([A-Z][A-Za-z\s]+?)\s*(?:via|UPI|upi|IMPS|imps|NEFT|neft)',
+      // "UPI/P2P/ref/PERSON NAME/vpa" or "UPI/P2M/ref/MERCHANT/vpa"
+      RegExp(r'UPI/[A-Za-z0-9]+/\d+/([A-Za-z][A-Za-z\s.]{1,30})/[a-zA-Z0-9._-]+@',
           caseSensitive: false),
-      // "to PERSON Ref" or "from PERSON Ref"
-      RegExp(r'(?:to|from|by)\s+([A-Z][A-Za-z\s]{2,25})\s*(?:Ref|ref|REF)',
+      // "to PERSON via UPI" or "to PERSON UPI" (greedy, relaxed first char)
+      RegExp(r'(?:to|for)\s+([A-Za-z][A-Za-z\s.]+)\s+(?:via\s+)?(?:UPI|IMPS|NEFT)',
           caseSensitive: false),
-      // "to VPA person@bank"
-      RegExp(r'(?:to|from)\s+(?:VPA\s+)?([a-z0-9.]+@[a-z]+)',
+      // "from PERSON via UPI" (for credits) — greedy
+      RegExp(r'(?:from|by)\s+([A-Za-z][A-Za-z\s.]+)\s+(?:via\s+)?(?:UPI|IMPS|NEFT)',
+          caseSensitive: false),
+      // "to PERSON Ref" or "from PERSON Ref" — greedy, relaxed
+      RegExp(r'(?:to|from|by)\s+([A-Za-z][A-Za-z\s.]{2,30})\s*(?:Ref|ref|REF|UPI)',
+          caseSensitive: false),
+      // "VPA person@bank (PERSON NAME)" — parenthesized name after VPA
+      RegExp(r'(?:VPA\s+)?[a-zA-Z0-9._-]+@[a-zA-Z]+\s*\(([A-Za-z][A-Za-z\s.]+?)\)',
+          caseSensitive: false),
+      // "to VPA person@bank" — extract VPA as fallback
+      RegExp(r'(?:to|from)\s+(?:VPA\s+)?([a-zA-Z0-9._-]+@[a-zA-Z]+)',
           caseSensitive: false),
     ];
 
     for (final pattern in patterns) {
       final match = pattern.firstMatch(text);
       if (match != null) {
-        final name = match.group(1)?.trim();
-        if (name != null && name.length >= 2 && name.length <= 40) {
-          return name;
-        }
+        var name = match.group(1)?.trim();
+        if (name == null || name.length < 2 || name.length > 40) continue;
+        // Clean trailing prepositions / junk that greedy match may capture
+        name = name.replaceAll(RegExp(r'\s+(via|on|in|at|is|was|has|the)$', caseSensitive: false), '').trim();
+        if (name.length >= 2) return name;
       }
     }
     return null;
@@ -283,6 +321,12 @@ class SmsService {
     );
 
     if (body.isEmpty) return null;
+
+    // Early filter: reject messages not from banks/financial institutions
+    if (!_isLikelyBankSms(sender, body)) {
+      debugPrint('PayTrace: Skipping non-bank SMS from $sender');
+      return null;
+    }
 
     final amount = _extractAmount(body);
     final refNumber = _extractUpiRef(body);
@@ -316,6 +360,111 @@ class SmsService {
       isCredit: isCredit,
       payeeName: payeeName,
     );
+  }
+
+  /// Check if an SMS is likely from a bank or financial institution.
+  /// Rejects OTT services, subscription notifications, marketing, etc.
+  static bool _isLikelyBankSms(String sender, String body) {
+    final lower = body.toLowerCase();
+    final senderLower = sender.toLowerCase();
+
+    // ── Reject known non-financial senders ──
+    const nonFinancialSenders = [
+      'hotstar', 'disney', 'netflix', 'spotify', 'youtube',
+      'jiocinema', 'sonyliv', 'zee5', 'voot', 'wynk',
+      'gaana', 'hungama', 'mxplay',
+      'swiggy', 'zomato', 'dunzo', 'blinkit', 'bigbask',
+      'flipkart', 'myntra', 'ajio', 'meesho', 'nykaa',
+      'ola', 'uber', 'rapido',
+      'makemy', 'goibibo', 'cleartrip', 'yatra',
+      'bookmyshow', 'pvr', 'inox',
+      'dream11', 'mpl', 'winzo',
+      'unacad', 'byju', 'vedantu',
+      'practo', 'pharmeasy', 'netmeds',
+      'linkedinapp', 'twitter', 'instagram',
+    ];
+    for (final name in nonFinancialSenders) {
+      if (senderLower.contains(name)) return false;
+    }
+
+    // ── Reject subscription / plan / recharge notifications ──
+    if (_isSubscriptionOrPlanSms(lower)) return false;
+
+    // ── Must contain at least one banking / financial keyword ──
+    // Real bank SMS always reference accounts, UPI, or use
+    // bank-specific transaction language.
+    final hasBankIndicator = lower.contains('a/c') ||
+        lower.contains('acct') ||
+        lower.contains('debited') ||
+        lower.contains('credited') ||
+        lower.contains('upi') ||
+        lower.contains('imps') ||
+        lower.contains('neft') ||
+        lower.contains('rtgs') ||
+        lower.contains('txn') ||
+        lower.contains('ref no') ||
+        lower.contains('vpa') ||
+        lower.contains('avl bal') ||
+        lower.contains('available bal') ||
+        lower.contains('transferred') ||
+        lower.contains('withdrawn') ||
+        (lower.contains('account') &&
+            (lower.contains('debit') ||
+                lower.contains('credit') ||
+                lower.contains('transfer') ||
+                lower.contains('withdraw')));
+
+    return hasBankIndicator;
+  }
+
+  /// Detect subscription / plan / recharge SMS that mention amounts
+  /// but are NOT actual bank transaction alerts.
+  static bool _isSubscriptionOrPlanSms(String lowerBody) {
+    // ── Subscription / plan renewals ──
+    final hasSubKeyword = lowerBody.contains('subscription') ||
+        lowerBody.contains('subscribe') ||
+        lowerBody.contains('renew') ||
+        lowerBody.contains('membership');
+
+    final hasSubContext = lowerBody.contains('activated') ||
+        lowerBody.contains('expire') ||
+        lowerBody.contains('valid till') ||
+        lowerBody.contains('valid for') ||
+        lowerBody.contains('enjoy') ||
+        lowerBody.contains('watch') ||
+        lowerBody.contains('stream') ||
+        lowerBody.contains('download') ||
+        lowerBody.contains('premium') ||
+        lowerBody.contains('upgrade');
+
+    if (hasSubKeyword && hasSubContext) return true;
+
+    // Also reject if body explicitly mentions OTT / service names
+    final hasOttName = lowerBody.contains('hotstar') ||
+        lowerBody.contains('netflix') ||
+        lowerBody.contains('spotify') ||
+        lowerBody.contains('jiocinema') ||
+        lowerBody.contains('zee5') ||
+        lowerBody.contains('sonyliv') ||
+        lowerBody.contains('amazon prime') ||
+        lowerBody.contains('youtube premium') ||
+        lowerBody.contains('disney+');
+
+    if (hasOttName && hasSubKeyword) return true;
+
+    // ── Recharge / data pack ──
+    final hasRechargeKeyword = lowerBody.contains('recharge') ||
+        lowerBody.contains('data pack') ||
+        lowerBody.contains('talktime') ||
+        lowerBody.contains('validity');
+
+    final hasRechargeContext = lowerBody.contains('gb') ||
+        lowerBody.contains('unlimited') ||
+        (lowerBody.contains('days') && lowerBody.contains('valid'));
+
+    if (hasRechargeKeyword && hasRechargeContext) return true;
+
+    return false;
   }
 
   /// Extract amount from bank SMS.

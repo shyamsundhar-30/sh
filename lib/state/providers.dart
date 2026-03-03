@@ -31,26 +31,7 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
   static const _storage = FlutterSecureStorage();
   static const _key = 'theme_mode';
 
-  ThemeModeNotifier() : super(ThemeMode.dark) {
-    _loadSaved();
-  }
-
-  Future<void> _loadSaved() async {
-    final saved = await _storage.read(key: _key);
-    if (saved != null) {
-      switch (saved) {
-        case 'light':
-          state = ThemeMode.light;
-          break;
-        case 'dark':
-          state = ThemeMode.dark;
-          break;
-        case 'system':
-          state = ThemeMode.system;
-          break;
-      }
-    }
-  }
+  ThemeModeNotifier([super.initial = ThemeMode.dark]);
 
   Future<void> setThemeMode(ThemeMode mode) async {
     state = mode;
@@ -116,8 +97,7 @@ final transactionSearchProvider =
 // ═══════════════════════════════════════════
 
 /// Trigger SMS sync on app open — returns count of newly imported transactions.
-/// Auto-dispose so it runs fresh each time the provider is first read.
-final smsSyncProvider = FutureProvider.autoDispose<int>((ref) async {
+final smsSyncProvider = FutureProvider<int>((ref) async {
   final db = ref.watch(databaseProvider);
   return SmsSyncService.sync(db);
 });
@@ -180,6 +160,10 @@ final recurringPaymentsProvider = FutureProvider<List<RecurringPayment>>((ref) a
 //  PAYMENT STATE MANAGEMENT
 // ═══════════════════════════════════════════
 
+/// Sentinel value for [PaymentState.copyWith] to distinguish
+/// "not passed" from "explicitly set to null".
+const Object _sentinel = Object();
+
 /// Represents the current payment flow state
 enum PaymentFlowStatus {
   idle,
@@ -221,27 +205,38 @@ class PaymentState {
 
   PaymentState copyWith({
     PaymentFlowStatus? status,
-    String? payeeUpiId,
-    String? payeeName,
-    double? amount,
-    String? note,
-    String? qrType,
+    Object? payeeUpiId = _sentinel,
+    Object? payeeName = _sentinel,
+    Object? amount = _sentinel,
+    Object? note = _sentinel,
+    Object? qrType = _sentinel,
     String? paymentMode,
-    UpiAppInfo? selectedApp,
-    String? transactionId,
-    String? error,
+    Object? selectedApp = _sentinel,
+    Object? transactionId = _sentinel,
+    Object? error = _sentinel,
   }) {
     return PaymentState(
       status: status ?? this.status,
-      payeeUpiId: payeeUpiId ?? this.payeeUpiId,
-      payeeName: payeeName ?? this.payeeName,
-      amount: amount ?? this.amount,
-      note: note ?? this.note,
-      qrType: qrType ?? this.qrType,
+      payeeUpiId: payeeUpiId == _sentinel
+          ? this.payeeUpiId
+          : payeeUpiId as String?,
+      payeeName: payeeName == _sentinel
+          ? this.payeeName
+          : payeeName as String?,
+      amount:
+          amount == _sentinel ? this.amount : amount as double?,
+      note: note == _sentinel ? this.note : note as String?,
+      qrType:
+          qrType == _sentinel ? this.qrType : qrType as String?,
       paymentMode: paymentMode ?? this.paymentMode,
-      selectedApp: selectedApp ?? this.selectedApp,
-      transactionId: transactionId ?? this.transactionId,
-      error: error ?? this.error,
+      selectedApp: selectedApp == _sentinel
+          ? this.selectedApp
+          : selectedApp as UpiAppInfo?,
+      transactionId: transactionId == _sentinel
+          ? this.transactionId
+          : transactionId as String?,
+      error:
+          error == _sentinel ? this.error : error as String?,
     );
   }
 

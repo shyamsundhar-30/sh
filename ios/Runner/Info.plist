@@ -47,6 +47,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>PayTrace needs camera access to scan UPI QR codes for payments.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>PayTrace needs access to your contacts to find people you want to pay.</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>upi</string>

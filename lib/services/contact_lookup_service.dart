@@ -5,9 +5,9 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 /// against device contacts to resolve real names.
 ///
 /// Flow:
-///   1. Extract 10-digit phone number from UPI ID (e.g., "9876543210@ybl")
-///   2. Look up in device contacts
-///   3. Return the contact display name if found
+///   1. Load ALL contacts once per sync session into a normalized map
+///   2. Extract 10-digit phone number from UPI ID
+///   3. O(1) lookup in the pre-built map
 ///
 /// Caches results in-memory for the sync session to avoid repeated lookups.
 class ContactLookupService {
@@ -16,22 +16,64 @@ class ContactLookupService {
   /// In-memory cache: phone number → contact name
   static final Map<String, String?> _cache = {};
 
+  /// Pre-loaded contact map: normalized phone → display name
+  static Map<String, String>? _contactMap;
+
   /// Whether we have contacts permission
   static bool? _hasPermission;
 
+  /// Pre-load all device contacts into a normalized phone → name map.
+  /// Call this once at the start of a sync session for O(1) lookups.
+  static Future<void> preloadContacts() async {
+    if (_contactMap != null) return; // Already loaded this session
+
+    // flutter_contacts is not available on web
+    if (kIsWeb) {
+      _contactMap = {};
+      return;
+    }
+
+    _hasPermission ??= await FlutterContacts.requestPermission(readonly: true);
+    if (_hasPermission != true) {
+      debugPrint('PayTrace Contacts: No contacts permission');
+      _contactMap = {};
+      return;
+    }
+
+    try {
+      final contacts = await FlutterContacts.getContacts(
+        withProperties: true,
+        withPhoto: false,
+      );
+
+      final map = <String, String>{};
+      for (final contact in contacts) {
+        if (contact.displayName.isEmpty) continue;
+        for (final phone in contact.phones) {
+          final normalized = _normalizePhone(phone.number);
+          if (normalized.length >= 10) {
+            // Store both the full normalized and the last 10 digits
+            map[normalized] = contact.displayName;
+            if (normalized.length > 10) {
+              map[normalized.substring(normalized.length - 10)] = contact.displayName;
+            }
+          }
+        }
+      }
+
+      _contactMap = map;
+      debugPrint('PayTrace Contacts: Pre-loaded ${map.length} phone entries from ${contacts.length} contacts');
+    } catch (e) {
+      debugPrint('PayTrace Contacts: Error pre-loading contacts — $e');
+      _contactMap = {};
+    }
+  }
+
   /// Try to resolve a name from a UPI ID by looking up the phone number
   /// in device contacts.
-  ///
-  /// UPI IDs are often phone-number-based:
-  ///   - 9876543210@ybl
-  ///   - 9876543210@paytm
-  ///   - 9876543210-1@okicici
-  ///
-  /// Returns the contact display name, or null if not found.
   static Future<String?> lookupFromUpiId(String? upiId) async {
     if (upiId == null || upiId.isEmpty) return null;
 
-    // Extract phone number from UPI ID
     final phone = extractPhoneNumber(upiId);
     if (phone == null) return null;
 
@@ -43,48 +85,20 @@ class ContactLookupService {
     // Check cache first
     if (_cache.containsKey(phone)) return _cache[phone];
 
-    // Check permission
-    _hasPermission ??=
-        await FlutterContacts.requestPermission(readonly: true);
-    if (_hasPermission != true) {
-      debugPrint('PayTrace Contacts: No contacts permission');
-      return null;
+    // Ensure contacts are pre-loaded
+    await preloadContacts();
+
+    final normalized = _normalizePhone(phone);
+    final name = _contactMap?[normalized] ??
+        (_contactMap != null && normalized.length > 10
+            ? _contactMap![normalized.substring(normalized.length - 10)]
+            : null);
+
+    _cache[phone] = name;
+    if (name != null) {
+      debugPrint('PayTrace Contacts: $phone → $name');
     }
-
-    try {
-      // Normalize the phone number for matching
-      final normalized = _normalizePhone(phone);
-      
-      // Get all contacts with phone numbers
-      final contacts = await FlutterContacts.getContacts(
-        withProperties: true,
-        withPhoto: false,
-      );
-
-      for (final contact in contacts) {
-        for (final contactPhone in contact.phones) {
-          final contactNormalized = _normalizePhone(contactPhone.number);
-          if (contactNormalized == normalized ||
-              contactNormalized.endsWith(normalized) ||
-              normalized.endsWith(contactNormalized)) {
-            final name = contact.displayName;
-            if (name.isNotEmpty) {
-              _cache[phone] = name;
-              debugPrint('PayTrace Contacts: $phone → $name');
-              return name;
-            }
-          }
-        }
-      }
-
-      // Not found — cache the miss too
-      _cache[phone] = null;
-      debugPrint('PayTrace Contacts: $phone → not found');
-      return null;
-    } catch (e) {
-      debugPrint('PayTrace Contacts: Error looking up $phone — $e');
-      return null;
-    }
+    return name;
   }
 
   /// Extract a 10-digit Indian phone number from a UPI ID.
@@ -142,6 +156,7 @@ class ContactLookupService {
   /// Clear the in-memory cache (call between sync sessions if needed).
   static void clearCache() {
     _cache.clear();
+    _contactMap = null;
     _hasPermission = null;
   }
 }

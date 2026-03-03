@@ -14,6 +14,7 @@ import '../../services/upi_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/sms_service.dart';
 import 'app_picker_sheet.dart';
+import 'contact_picker_sheet.dart';
 import 'payment_status_screen.dart';
 import 'qr_scan_screen.dart';
 
@@ -68,7 +69,6 @@ class _PayScreenState extends ConsumerState<PayScreen>
   bool _detailsConfirmed = false; // After user hits "Proceed"
   PayeeType _payeeType = PayeeType.unknown;
   StreamSubscription<PaymentNotification>? _notificationSub;
-  StreamSubscription<BankSms>? _smsSub;
   bool _autoConfirmed = false; // Prevent double-confirm
   DateTime? _paymentLaunchedAt; // When user opened UPI app
   bool _isPolling = false; // Prevent concurrent polls
@@ -87,6 +87,46 @@ class _PayScreenState extends ConsumerState<PayScreen>
     WidgetsBinding.instance.addObserver(this);
     _prefillFromQr();
     _prefillFromFavorite();
+    _openContactPickerIfNeeded();
+  }
+
+  /// When in contact mode, immediately open the contact picker.
+  void _openContactPickerIfNeeded() {
+    if (widget.paymentMode == AppConstants.modeContact &&
+        widget.prefilledUpiId == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openContactPicker();
+      });
+    }
+  }
+
+  /// Show the contact picker and fill in the selected contact's details.
+  Future<void> _openContactPicker() async {
+    final picked = await ContactPickerSheet.show(context);
+    if (!mounted) return;
+
+    if (picked == null) {
+      // User dismissed without picking — go back to home
+      if (_upiIdController.text.isEmpty) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+
+    setState(() {
+      _nameController.text = picked.displayName;
+      // Build a phone-based UPI ID (most common: phone@ybl)
+      _upiIdController.text = '${picked.phone}@ybl';
+      _payeeType = MerchantDetector.classify(
+        upiId: _upiIdController.text,
+        payeeName: picked.displayName,
+      );
+    });
+
+    ref.read(paymentProvider.notifier).onManualEntry(
+          payeeUpiId: _upiIdController.text,
+          payeeName: picked.displayName,
+        );
   }
 
   /// Pre-fill from favorites strip (when user taps a frequent payee)
@@ -147,7 +187,6 @@ class _PayScreenState extends ConsumerState<PayScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _notificationSub?.cancel();
-    _smsSub?.cancel();
     _autoDetectTimer?.cancel();
     _countdownUiTimer?.cancel();
     _upiIdController.dispose();
@@ -172,7 +211,6 @@ class _PayScreenState extends ConsumerState<PayScreen>
           if (sms != null && !_autoConfirmed && mounted) {
             _autoConfirmed = true;
             _notificationSub?.cancel();
-            _smsSub?.cancel();
             _onAutoConfirmed(
               upiRefNumber: sms.refNumber,
               detectedAmount: sms.amount,
@@ -244,7 +282,6 @@ class _PayScreenState extends ConsumerState<PayScreen>
       debugPrint('PayTrace: SMS inbox poll found match! ref=${matchedSms.refNumber}, amount=${matchedSms.amount}');
       _autoConfirmed = true;
       _notificationSub?.cancel();
-      _smsSub?.cancel();
       _onAutoConfirmed(
         upiRefNumber: matchedSms.refNumber,
         detectedAmount: matchedSms.amount,
@@ -411,11 +448,10 @@ class _PayScreenState extends ConsumerState<PayScreen>
     _startAutoDetectWait();
   }
 
-  /// Start listening to payment notifications AND bank SMS for auto-detection.
-  /// Whichever fires first confirms the payment.
+  /// Start listening to payment notifications for auto-detection.
+  /// SMS detection is handled by _pollSmsInbox() using ContentResolver polling.
   void _startNotificationListener() {
     _notificationSub?.cancel();
-    _smsSub?.cancel();
     _autoConfirmed = false;
 
     final pendingAmount = double.tryParse(_amountController.text.trim()) ?? 0;
@@ -424,7 +460,7 @@ class _PayScreenState extends ConsumerState<PayScreen>
 
     debugPrint('PayTrace: Listening for auto-detection — amount=$pendingAmount (amountFree=$amountFree), payee=$pendingPayee');
 
-    // ── Listener 1: UPI app notifications (GPay, PhonePe, etc.) ──
+    // ── Listener: UPI app notifications (GPay, PhonePe, etc.) ──
     _notificationSub = NotificationService.paymentNotifications.listen(
       (notification) {
         debugPrint('PayTrace: Got notification → ${notification.amount}, ${notification.payeeName}');
@@ -462,7 +498,6 @@ class _PayScreenState extends ConsumerState<PayScreen>
           debugPrint('PayTrace: Notification matches! Auto-confirming...');
           _autoConfirmed = true;
           _notificationSub?.cancel();
-          _smsSub?.cancel();
           _onAutoConfirmed(
             detectedAmount: notification.amount,
           );
@@ -470,42 +505,6 @@ class _PayScreenState extends ConsumerState<PayScreen>
       },
       onError: (e) {
         debugPrint('PayTrace: Notification stream error: $e');
-      },
-    );
-
-    // ── Listener 2: Bank debit SMS (more reliable, sent by bank) ──
-    _smsSub = SmsService.bankSmsStream.listen(
-      (sms) {
-        debugPrint('PayTrace: Got bank SMS → amount=${sms.amount}, ref=${sms.refNumber}');
-
-        if (_autoConfirmed) return;
-
-        bool matches;
-
-        if (amountFree) {
-          matches = SmsService.isDebitSms(sms) &&
-              sms.amount != null &&
-              sms.amount! > 0;
-        } else {
-          matches = SmsService.matchesPending(
-            sms: sms,
-            pendingAmount: pendingAmount,
-          );
-        }
-
-        if (matches) {
-          debugPrint('PayTrace: Bank SMS matches! Auto-confirming with ref=${sms.refNumber}, amount=${sms.amount}...');
-          _autoConfirmed = true;
-          _notificationSub?.cancel();
-          _smsSub?.cancel();
-          _onAutoConfirmed(
-            upiRefNumber: sms.refNumber,
-            detectedAmount: sms.amount,
-          );
-        }
-      },
-      onError: (e) {
-        debugPrint('PayTrace: SMS stream error: $e');
       },
     );
   }
@@ -550,7 +549,6 @@ class _PayScreenState extends ConsumerState<PayScreen>
         _autoConfirmed = true;
         _countdownUiTimer?.cancel();
         _notificationSub?.cancel();
-        _smsSub?.cancel();
         setState(() => _waitingForAutoDetect = false);
         _onAutoConfirmed(
           upiRefNumber: lastChanceSms.refNumber,
@@ -663,7 +661,6 @@ class _PayScreenState extends ConsumerState<PayScreen>
             'ref=${lastChanceSms.refNumber}, amount=${lastChanceSms.amount}');
         _autoConfirmed = true;
         _notificationSub?.cancel();
-        _smsSub?.cancel();
         _onAutoConfirmed(
           upiRefNumber: lastChanceSms.refNumber,
           detectedAmount: lastChanceSms.amount,
@@ -764,7 +761,7 @@ class _PayScreenState extends ConsumerState<PayScreen>
                 // Try scanning SMS one more time
                 final sms = await _quickSmsScan();
                 if (!mounted) return;
-                if (sms != null && !_autoConfirmed && mounted) {
+                if (sms != null && !_autoConfirmed) {
                   _autoConfirmed = true;
                   _notificationSub?.cancel();
                   _smsSub?.cancel();
@@ -773,7 +770,7 @@ class _PayScreenState extends ConsumerState<PayScreen>
                     upiRefNumber: sms.refNumber,
                     detectedAmount: sms.amount,
                   );
-                } else if (mounted) {
+                } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('No payment SMS found yet. Please enter manually.'),
@@ -1012,8 +1009,53 @@ class _PayScreenState extends ConsumerState<PayScreen>
               validator: Validators.note,
             ),
 
-            // UPI ID & Name (manual entry only)
+            // UPI ID & Name (manual / contact entry)
             if (widget.qrData == null) ...[
+              // Pick from Contacts button (contact mode)
+              if (widget.paymentMode == AppConstants.modeContact) ...[
+                InkWell(
+                  onTap: _openContactPicker,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: AppTheme.primary.withValues(alpha: 0.25),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.contacts_rounded,
+                            color: AppTheme.primary, size: 22),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _nameController.text.isNotEmpty
+                                ? 'Paying ${_nameController.text}'
+                                : 'Pick from Contacts',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyLarge
+                                ?.copyWith(
+                                  color: AppTheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                        Icon(Icons.swap_horiz_rounded,
+                            color: AppTheme.primary.withValues(alpha: 0.6),
+                            size: 20),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+
               const SizedBox(height: 24),
               Text('Payee UPI ID',
                   style: Theme.of(context).textTheme.titleMedium),
@@ -1420,7 +1462,6 @@ class _PayScreenState extends ConsumerState<PayScreen>
                 _autoDetectTimer?.cancel();
                 _countdownUiTimer?.cancel();
                 _notificationSub?.cancel();
-                _smsSub?.cancel();
                 setState(() => _waitingForAutoDetect = false);
                 await ref.read(paymentProvider.notifier).confirmPayment(
                       wasSuccessful: false,

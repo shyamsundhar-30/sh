@@ -1,12 +1,39 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/budget_recommender.dart';
 import '../../data/database/app_database.dart';
 import '../../services/export_service.dart';
+import '../../services/upi_service.dart';
 import '../../state/providers.dart';
+
+// ─── Budget Recommendation Provider ───
+final budgetRecommendationProvider =
+    FutureProvider.autoDispose<BudgetRecommendation>((ref) async {
+  final db = ref.watch(databaseProvider);
+  final now = DateTime.now();
+
+  // Get last 3 months of spending + income data
+  final months = [
+    for (int i = 1; i <= 3; i++) DateTime(now.year, now.month - i),
+  ];
+
+  final spending = await db.getMonthlySpendingHistory(months);
+  final income = await db.getMonthlyIncomeHistory(months);
+
+  // Filter out zero months
+  final nonZeroSpending = spending.where((s) => s > 0).toList();
+  final nonZeroIncome = income.where((i) => i > 0).toList();
+
+  return BudgetRecommender.recommend(
+    monthlySpending: nonZeroSpending,
+    monthlyIncome: nonZeroIncome,
+  );
+});
 
 /// Settings screen — theme, budget, export, about
 class SettingsScreen extends ConsumerWidget {
@@ -16,7 +43,8 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
     final now = DateTime.now();
-    final budgetAsync = ref.watch(monthlyBudgetProvider(now));
+    final monthKey = DateTime(now.year, now.month);
+    final budgetAsync = ref.watch(monthlyBudgetProvider(monthKey));
 
     return Scaffold(
       appBar: AppBar(
@@ -40,6 +68,11 @@ class SettingsScreen extends ConsumerWidget {
           // ─── Data Section ───
           const _SectionHeader(title: 'Data'),
           _buildExportTile(context, ref),
+
+          const SizedBox(height: 8),
+
+          // ─── Permissions Section (Android only) ───
+          if (!kIsWeb) ..._buildPermissionsSection(context, ref),
 
           const SizedBox(height: 8),
 
@@ -88,30 +121,38 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 16),
-            SegmentedButton<ThemeMode>(
-              segments: const [
-                ButtonSegment(
-                  value: ThemeMode.system,
-                  icon: Icon(Icons.phone_android_rounded, size: 18),
-                  label: Text('System'),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<ThemeMode>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(
+                    value: ThemeMode.system,
+                    icon: Icon(Icons.phone_android_rounded, size: 16),
+                    label: Text('System'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.light,
+                    icon: Icon(Icons.light_mode_rounded, size: 16),
+                    label: Text('Light'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.dark,
+                    icon: Icon(Icons.dark_mode_rounded, size: 16),
+                    label: Text('Dark'),
+                  ),
+                ],
+                selected: {current},
+                onSelectionChanged: (modes) {
+                  ref.read(themeModeProvider.notifier).setThemeMode(modes.first);
+                },
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(horizontal: 12),
+                  ),
                 ),
-                ButtonSegment(
-                  value: ThemeMode.light,
-                  icon: Icon(Icons.light_mode_rounded, size: 18),
-                  label: Text('Light'),
-                ),
-                ButtonSegment(
-                  value: ThemeMode.dark,
-                  icon: Icon(Icons.dark_mode_rounded, size: 18),
-                  label: Text('Dark'),
-                ),
-              ],
-              selected: {current},
-              onSelectionChanged: (modes) {
-                ref.read(themeModeProvider.notifier).setThemeMode(modes.first);
-              },
-              style: const ButtonStyle(
-                visualDensity: VisualDensity.compact,
               ),
             ),
           ],
@@ -146,13 +187,40 @@ class SettingsScreen extends ConsumerWidget {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
       ),
-      error: (_, __) => const _SettingsTile(
+      error: (_, _) => const _SettingsTile(
         icon: Icons.account_balance_wallet_outlined,
         title: 'Monthly Budget',
         subtitle: 'Error loading budget',
         trailing: SizedBox.shrink(),
       ),
     );
+  }
+
+  List<Widget> _buildPermissionsSection(BuildContext context, WidgetRef ref) {
+    return [
+      _SectionHeader(title: 'Permissions'),
+      _SettingsTile(
+        icon: Icons.sms_outlined,
+        title: 'SMS Access',
+        subtitle: 'Required for auto-detecting bank transactions',
+        trailing: Icon(Icons.chevron_right_rounded,
+            color: Theme.of(context).textTheme.bodyMedium?.color),
+        onTap: () async {
+          await UpiService.openAppSettings();
+        },
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Text(
+          'If SMS permission is not working, open PayTrace in phone Settings, '
+          'tap ⋮ (3 dots) at top right, and enable "Allow restricted settings".',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontSize: 11,
+                color: Colors.grey.shade500,
+              ),
+        ),
+      ),
+    ];
   }
 
   Widget _buildExportTile(BuildContext context, WidgetRef ref) {
@@ -175,94 +243,163 @@ class SettingsScreen extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          left: 24,
-          right: 24,
-          top: 24,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Set Monthly Budget',
-              style: Theme.of(ctx).textTheme.titleLarge,
+      builder: (ctx) => Consumer(
+        builder: (ctx, ref, _) {
+          final recommendationAsync = ref.watch(budgetRecommendationProvider);
+
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 24,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
             ),
-            const SizedBox(height: 4),
-            Text(
-              Formatters.monthYear(now),
-              style: Theme.of(ctx).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Budget Amount',
-                prefixText: '₹ ',
-                hintText: 'e.g. 5000',
-              ),
-            ),
-            const SizedBox(height: 8),
-            // Quick amount chips
-            Wrap(
-              spacing: 8,
-              children: [2000, 5000, 10000, 20000, 50000].map((amount) {
-                return ActionChip(
-                  label: Text('₹${Formatters.amountOnly(amount.toDouble()).split('.')[0]}'),
-                  onPressed: () => controller.text = amount.toString(),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  final amount = double.tryParse(controller.text);
-                  if (amount != null && amount > 0) {
-                    ref.read(databaseProvider).upsertBudget(
-                          now.year, now.month, amount);
-                    ref.invalidate(monthlyBudgetProvider);
-                    ref.invalidate(budgetProgressProvider);
-                    Navigator.of(ctx).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Budget set to ${Formatters.currency(amount)}',
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Set Monthly Budget',
+                  style: Theme.of(ctx).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  Formatters.monthYear(now),
+                  style: Theme.of(ctx).textTheme.bodyMedium,
+                ),
+
+                // ── Smart Suggestions ──
+                const SizedBox(height: 16),
+                recommendationAsync.when(
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, _) => const SizedBox.shrink(),
+                  data: (rec) {
+                    if (!rec.hasTiers) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.auto_awesome,
+                                size: 16, color: AppTheme.primary),
+                            const SizedBox(width: 6),
+                            Text(
+                              'SMART SUGGESTIONS',
+                              style: Theme.of(ctx)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: AppTheme.primary,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.8,
+                                  ),
+                            ),
+                          ],
                         ),
-                        backgroundColor: AppTheme.success,
-                      ),
-                    );
-                  }
-                },
-                child: const Text('Save Budget'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (existing != null)
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: () {
-                    ref.read(databaseProvider).upsertBudget(
-                          now.year, now.month, 0);
-                    ref.invalidate(monthlyBudgetProvider);
-                    ref.invalidate(budgetProgressProvider);
-                    Navigator.of(ctx).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Budget removed')),
+                        const SizedBox(height: 4),
+                        Text(
+                          rec.reasoning,
+                          style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(ctx).brightness ==
+                                        Brightness.dark
+                                    ? AppTheme.textSecondaryDark
+                                    : AppTheme.textSecondaryLight,
+                                fontSize: 11,
+                              ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: rec.tiers
+                              .map((tier) => Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 3),
+                                      child: _BudgetTierChip(
+                                        tier: tier,
+                                        onTap: () => controller.text =
+                                            tier.amount.toStringAsFixed(0),
+                                      ),
+                                    ),
+                                  ))
+                              .toList(),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                     );
                   },
-                  style: TextButton.styleFrom(foregroundColor: AppTheme.error),
-                  child: const Text('Remove Budget'),
                 ),
-              ),
-          ],
-        ),
+
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Budget Amount',
+                    prefixText: '₹ ',
+                    hintText: 'e.g. 5000',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Quick amount chips
+                Wrap(
+                  spacing: 8,
+                  children: [2000, 5000, 10000, 20000, 50000].map((amount) {
+                    return ActionChip(
+                      label: Text(
+                          '₹${Formatters.amountOnly(amount.toDouble()).split('.')[0]}'),
+                      onPressed: () => controller.text = amount.toString(),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final amount = double.tryParse(controller.text);
+                      if (amount != null && amount > 0) {
+                        ref.read(databaseProvider).upsertBudget(
+                              now.year, now.month, amount);
+                        ref.invalidate(monthlyBudgetProvider);
+                        ref.invalidate(budgetProgressProvider);
+                        Navigator.of(ctx).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Budget set to ${Formatters.currency(amount)}',
+                            ),
+                            backgroundColor: AppTheme.success,
+                          ),
+                        );
+                      }
+                    },
+                    child: const Text('Save Budget'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (existing != null)
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton(
+                      onPressed: () {
+                        ref.read(databaseProvider).upsertBudget(
+                              now.year, now.month, 0);
+                        ref.invalidate(monthlyBudgetProvider);
+                        ref.invalidate(budgetProgressProvider);
+                        Navigator.of(ctx).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Budget removed')),
+                        );
+                      },
+                      style:
+                          TextButton.styleFrom(foregroundColor: AppTheme.error),
+                      child: const Text('Remove Budget'),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -304,7 +441,15 @@ class SettingsScreen extends ConsumerWidget {
                     }
                     return;
                   }
-                  await ExportService.exportToCsv(transactions);
+                  try {
+                    await ExportService.exportToCsv(transactions);
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Export failed: $e')),
+                      );
+                    }
+                  }
                 },
                 icon: const Icon(Icons.download_rounded, size: 20),
                 label: const Text('Export All Transactions'),
@@ -333,7 +478,15 @@ class SettingsScreen extends ConsumerWidget {
                     }
                     return;
                   }
-                  await ExportService.exportToCsv(transactions);
+                  try {
+                    await ExportService.exportToCsv(transactions);
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Export failed: $e')),
+                      );
+                    }
+                  }
                 },
                 icon: const Icon(Icons.calendar_month_rounded, size: 20),
                 label: const Text('Export This Month'),
@@ -408,6 +561,77 @@ class _SettingsTile extends StatelessWidget {
         trailing: trailing,
         onTap: onTap,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+}
+// ═══════════════════════════════════════════
+//  BUDGET TIER CHIP
+// ═══════════════════════════════════════════
+
+class _BudgetTierChip extends StatelessWidget {
+  final BudgetTier tier;
+  final VoidCallback onTap;
+
+  const _BudgetTierChip({required this.tier, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final tierColor = Color(tier.color);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: tierColor.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: tierColor.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
+          children: [
+            Text(
+              tier.icon,
+              style: const TextStyle(fontSize: 20),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              tier.label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                fontSize: 11,
+                color: tierColor,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '₹${tier.amount.toStringAsFixed(0)}',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+            Text(
+              tier.savingsPercent > 0
+                  ? 'Save ${tier.savingsPercent}%'
+                  : tier.savingsPercent < 0
+                      ? '+${tier.savingsPercent.abs()}% buffer'
+                      : 'Match avg',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 9,
+                color: isDark
+                    ? AppTheme.textSecondaryDark
+                    : AppTheme.textSecondaryLight,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }

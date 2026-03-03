@@ -220,11 +220,12 @@ class HomeScreen extends ConsumerWidget {
 
   Widget _buildMonthlySummary(BuildContext context, WidgetRef ref) {
     final now = DateTime.now();
-    final monthlySpending = ref.watch(monthlySpendingProvider(now));
-    final monthlyReceived = ref.watch(monthlyReceivedProvider(now));
-    final categorySpending = ref.watch(categorySpendingProvider(now));
-    final budgetProgress = ref.watch(budgetProgressProvider(now));
-    final budgetAsync = ref.watch(monthlyBudgetProvider(now));
+    final monthKey = DateTime(now.year, now.month);
+    final monthlySpending = ref.watch(monthlySpendingProvider(monthKey));
+    final monthlyReceived = ref.watch(monthlyReceivedProvider(monthKey));
+    final categorySpending = ref.watch(categorySpendingProvider(monthKey));
+    final budgetProgress = ref.watch(budgetProgressProvider(monthKey));
+    final budgetAsync = ref.watch(monthlyBudgetProvider(monthKey));
     final smsSync = ref.watch(smsSyncProvider);
 
     return Padding(
@@ -283,7 +284,7 @@ class HomeScreen extends ConsumerWidget {
                     height: 24,
                     child: LinearProgressIndicator(),
                   ),
-                  error: (_, __) => Text(
+                  error: (_, _) => Text(
                     '₹ --',
                     style: Theme.of(context).textTheme.headlineMedium,
                   ),
@@ -317,7 +318,7 @@ class HomeScreen extends ConsumerWidget {
                     height: 18,
                     child: LinearProgressIndicator(),
                   ),
-                  error: (_, __) => Text(
+                  error: (_, _) => Text(
                     '₹ --',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
@@ -371,7 +372,7 @@ class HomeScreen extends ConsumerWidget {
                   ],
                 ),
               ),
-              error: (_, __) => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
             ),
 
             // ─── Budget Progress Bar ───
@@ -457,7 +458,7 @@ class HomeScreen extends ConsumerWidget {
                 );
               },
               loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
             ),
 
             const SizedBox(height: 4),
@@ -553,7 +554,7 @@ class HomeScreen extends ConsumerWidget {
                 );
               },
               loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
             ),
           ],
         ),
@@ -585,7 +586,7 @@ class HomeScreen extends ConsumerWidget {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 itemCount: payees.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 16),
+                separatorBuilder: (_, _) => const SizedBox(width: 16),
                 itemBuilder: (context, index) {
                   final payee = payees[index];
                   return GestureDetector(
@@ -646,7 +647,7 @@ class HomeScreen extends ConsumerWidget {
         );
       },
       loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
     );
   }
 
@@ -680,7 +681,7 @@ class HomeScreen extends ConsumerWidget {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 itemCount: payments.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
                 itemBuilder: (context, index) {
                   final rp = payments[index];
                   final daysUntil = rp.nextExpectedDate != null
@@ -775,7 +776,7 @@ class HomeScreen extends ConsumerWidget {
         );
       },
       loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
     );
   }
 

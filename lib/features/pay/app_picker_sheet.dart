@@ -46,7 +46,7 @@ class AppPickerSheet extends ConsumerWidget {
               padding: EdgeInsets.all(40),
               child: CircularProgressIndicator(),
             ),
-            error: (error, __) => _buildError(context, ref, error),
+            error: (error, _) => _buildError(context, ref, error),
           ),
         ],
       ),

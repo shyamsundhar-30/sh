@@ -106,6 +106,38 @@ class SmsSyncService {
       return false;
     }
 
+    // Subscription / plan / renewal notifications (OTT, telecom, etc.)
+    if (lower.contains('subscription') ||
+        lower.contains('renew') ||
+        lower.contains('plan activated') ||
+        lower.contains('plan expires') ||
+        lower.contains('membership')) {
+      // Allow if it's clearly a bank debit/credit for the subscription
+      if (!lower.contains('debited') &&
+          !lower.contains('credited') &&
+          !lower.contains('a/c') &&
+          !lower.contains('upi')) {
+        return false;
+      }
+    }
+
+    // Known non-financial service names in SMS body
+    final nonFinancialServices = [
+      'hotstar', 'netflix', 'spotify', 'jiocinema', 'zee5',
+      'sonyliv', 'amazon prime', 'youtube premium', 'disney+',
+      'wynk', 'gaana',
+    ];
+    for (final svc in nonFinancialServices) {
+      if (lower.contains(svc)) {
+        // Only block if SMS lacks strong bank debit/credit language
+        if (!lower.contains('debited') &&
+            !lower.contains('credited') &&
+            !lower.contains('a/c')) {
+          return false;
+        }
+      }
+    }
+
     // Balance check / mini statement
     if (lower.contains('available bal') ||
         lower.contains('avl bal') ||

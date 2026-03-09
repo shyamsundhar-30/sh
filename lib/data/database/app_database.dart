@@ -76,6 +76,20 @@ class AppDatabase extends _$AppDatabase {
       );
 
   // ═══════════════════════════════════════════
+  //  APP DATA MANAGEMENT
+  // ═══════════════════════════════════════════
+
+  /// Clear all app data (transactions, payees, budgets, merchant data)
+  Future<void> clearAllData() async {
+    await transaction(() async {
+      await delete(transactions).go();
+      await delete(payees).go();
+      await delete(budgets).go();
+      await delete(merchantCategories).go();
+    });
+  }
+
+  // ═══════════════════════════════════════════
   //  TRANSACTION QUERIES
   // ═══════════════════════════════════════════
 
@@ -342,6 +356,19 @@ class AppDatabase extends _$AppDatabase {
               t.createdAt.isSmallerOrEqualValue(end))
           ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
         .get();
+  }
+
+  /// Watch all successful transactions for a specific month.
+  Stream<List<Transaction>> watchMonthTransactions(int year, int month) {
+    final start = DateTime(year, month, 1);
+    final end = DateTime(year, month + 1, 0, 23, 59, 59);
+    return (select(transactions)
+          ..where((t) =>
+              t.status.equals(AppConstants.statusSuccess) &
+              t.createdAt.isBiggerOrEqualValue(start) &
+              t.createdAt.isSmallerOrEqualValue(end))
+          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+        .watch();
   }
 
   /// Delete a transaction

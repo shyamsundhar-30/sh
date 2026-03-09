@@ -6,6 +6,7 @@ import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../services/export_service.dart';
+import '../../services/local_auth_service.dart';
 import '../../state/providers.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -63,6 +64,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final now = DateTime.now();
     final themeMode = ref.watch(themeModeProvider);
+    final isAppLockEnabled = ref.watch(appLockEnabledProvider);
     final budgetAsync = ref.watch(monthlyBudgetProvider(DateTime(now.year, now.month)));
 
     return ListView(
@@ -70,100 +72,106 @@ class SettingsScreen extends ConsumerWidget {
       children: [
         Text(
           'Settings',
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-        ),
-        Text(
-          'Customize your workspace',
-          style: Theme.of(context).textTheme.bodyMedium,
+          style: Theme.of(context).textTheme.headlineMedium,
         ),
         const SizedBox(height: 16),
+        const _SectionHeader(title: 'App Preferences'),
         _Card(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Theme',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.palette_outlined,
+                      size: 22,
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: SegmentedButton<ThemeMode>(
-                  showSelectedIcon: false,
-                  style: ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    textStyle: WidgetStatePropertyAll(
-                      Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w600,
+                    const SizedBox(width: 14),
+                    Text(
+                      'Theme',
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                    const Spacer(),
+                    SizedBox(
+                      height: 32,
+                      child: SegmentedButton<ThemeMode>(
+                        showSelectedIcon: false,
+                        style: ButtonStyle(
+                          visualDensity: VisualDensity.compact,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          textStyle: WidgetStatePropertyAll(
+                            Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                           ),
-                    ),
-                  ),
-                  segments: const [
-                    ButtonSegment(
-                      value: ThemeMode.system,
-                      icon: Icon(Icons.phone_android_rounded, size: 14),
-                      label: Text('System'),
-                    ),
-                    ButtonSegment(
-                      value: ThemeMode.dark,
-                      icon: Icon(Icons.dark_mode_rounded, size: 14),
-                      label: Text('Dark'),
-                    ),
-                    ButtonSegment(
-                      value: ThemeMode.light,
-                      icon: Icon(Icons.light_mode_rounded, size: 14),
-                      label: Text('Light'),
+                        ),
+                        segments: const [
+                          ButtonSegment(
+                            value: ThemeMode.system,
+                            icon: Icon(Icons.phone_android_rounded, size: 14),
+                          ),
+                          ButtonSegment(
+                            value: ThemeMode.dark,
+                            icon: Icon(Icons.dark_mode_rounded, size: 14),
+                          ),
+                          ButtonSegment(
+                            value: ThemeMode.light,
+                            icon: Icon(Icons.light_mode_rounded, size: 14),
+                          ),
+                        ],
+                        selected: {themeMode},
+                        onSelectionChanged: (selection) {
+                          ref.read(themeModeProvider.notifier).setThemeMode(selection.first);
+                        },
+                      ),
                     ),
                   ],
-                  selected: {themeMode},
-                  onSelectionChanged: (selection) {
-                    ref.read(themeModeProvider.notifier).setThemeMode(selection.first);
-                  },
+                ),
+              ),
+              Divider(
+                color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.15),
+                height: 1,
+                indent: 52,
+              ),
+              budgetAsync.when(
+                data: (budget) {
+                  final title = budget == null
+                      ? 'No monthly budget set'
+                      : 'Budget ${Formatters.currency(budget.limitAmount)}';
+                  return _Tile(
+                    icon: Icons.account_balance_wallet_outlined,
+                    title: title,
+                    subtitle: Formatters.monthYear(now),
+                    trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
+                    onTap: () => _showBudgetDialog(
+                      context,
+                      ref,
+                      now,
+                      budget?.limitAmount,
+                    ),
+                  );
+                },
+                loading: () => const _Tile(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'Loading budget...',
+                  subtitle: '',
+                  trailing: SizedBox.shrink(),
+                ),
+                error: (_, __) => const _Tile(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'Budget unavailable',
+                  subtitle: '',
+                  trailing: SizedBox.shrink(),
                 ),
               ),
             ],
           ),
         ),
         const SizedBox(height: 12),
-        _Card(
-          child: budgetAsync.when(
-            data: (budget) {
-              final title = budget == null
-                  ? 'No monthly budget set'
-                  : 'Budget ${Formatters.currency(budget.limitAmount)}';
-              return _Tile(
-                icon: Icons.account_balance_wallet_outlined,
-                title: title,
-                subtitle: Formatters.monthYear(now),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => _showBudgetDialog(
-                  context,
-                  ref,
-                  now,
-                  budget?.limitAmount,
-                ),
-              );
-            },
-            loading: () => const _Tile(
-              icon: Icons.account_balance_wallet_outlined,
-              title: 'Loading budget...',
-              subtitle: '',
-              trailing: SizedBox.shrink(),
-            ),
-            error: (_, __) => const _Tile(
-              icon: Icons.account_balance_wallet_outlined,
-              title: 'Budget unavailable',
-              subtitle: '',
-              trailing: SizedBox.shrink(),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
+        const _SectionHeader(title: 'Security'),
         _Card(
           child: Column(
             children: [
@@ -171,24 +179,44 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.security_rounded,
                 title: 'App Lock',
                 subtitle: 'Require biometric or PIN',
-                trailing: Switch(
-                  value: false,
-                  onChanged: (val) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('App Lock coming soon')),
-                    );
+                trailing: Switch.adaptive(
+                  value: isAppLockEnabled,
+                  onChanged: (val) async {
+                    if (val) {
+                      final localAuth = ref.read(localAuthProvider);
+                      final canAuth = await localAuth.canAuthenticate();
+                      if (!canAuth) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Your device does not support biometrics/PIN.')),
+                        );
+                        return;
+                      }
+                      
+                      final authSuccess = await localAuth.authenticate();
+                      if (authSuccess) {
+                        ref.read(appLockEnabledProvider.notifier).setAppLock(true);
+                      }
+                    } else {
+                      final localAuth = ref.read(localAuthProvider);
+                      final authSuccess = await localAuth.authenticate();
+                      if (authSuccess) {
+                        ref.read(appLockEnabledProvider.notifier).setAppLock(false);
+                      }
+                    }
                   },
                 ),
               ),
               Divider(
                 color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.15),
                 height: 1,
+                indent: 52,
               ),
               _Tile(
                 icon: Icons.build_circle_outlined,
                 title: 'Manage Permissions',
                 subtitle: 'SMS and Notification access',
-                trailing: const Icon(Icons.chevron_right_rounded),
+                trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
                 onTap: () {
                   const MethodChannel('com.paytrace.paytrace/upi')
                       .invokeMethod('openAppSettings');
@@ -198,6 +226,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 12),
+        const _SectionHeader(title: 'Data Management'),
         _Card(
           child: Column(
             children: [
@@ -205,7 +234,7 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.file_download_outlined,
                 title: 'Export transactions',
                 subtitle: 'Generate CSV',
-                trailing: const Icon(Icons.chevron_right_rounded),
+                trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
                 onTap: () async {
                   final db = ref.read(databaseProvider);
                   final transactions = await db.getAllTransactions();
@@ -223,9 +252,10 @@ class SettingsScreen extends ConsumerWidget {
               Divider(
                 color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.15),
                 height: 1,
+                indent: 52,
               ),
               _Tile(
-                icon: Icons.delete_forever_outlined,
+                icon: Icons.delete_outline_rounded,
                 title: 'Clear Data',
                 subtitle: 'Erase all transactions & settings',
                 trailing: const SizedBox.shrink(),
@@ -276,6 +306,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 12),
+        const _SectionHeader(title: 'About'),
         _Card(
           child: Column(
             children: [
@@ -283,7 +314,7 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.help_outline_rounded,
                 title: 'Help & Support',
                 subtitle: 'Contact us for issues',
-                trailing: const Icon(Icons.chevron_right_rounded),
+                trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
                 onTap: () {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Contact support@paytrace.app')),
@@ -293,6 +324,7 @@ class SettingsScreen extends ConsumerWidget {
               Divider(
                 color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.15),
                 height: 1,
+                indent: 52,
               ),
               const _Tile(
                 icon: Icons.info_outline_rounded,
@@ -318,10 +350,32 @@ class _Card extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(12),
       ),
-      padding: const EdgeInsets.all(14),
+      clipBehavior: Clip.antiAlias,
       child: child,
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+
+  const _SectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, bottom: 8, top: 16),
+      child: Text(
+        title.toUpperCase(),
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              letterSpacing: 0.5,
+              color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+            ),
+      ),
     );
   }
 }
@@ -345,36 +399,33 @@ class _Tile extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, size: 19, color: AppTheme.primary),
+            Icon(
+              icon,
+              size: 22,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                    style: Theme.of(context).textTheme.bodyLarge,
                   ),
-                  if (subtitle.isNotEmpty)
+                  if (subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
+                          ),
                     ),
+                  ],
                 ],
               ),
             ),

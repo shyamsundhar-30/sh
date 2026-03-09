@@ -12,6 +12,7 @@ import '../../core/utils/qr_parser.dart';
 import '../../core/utils/smart_spending_alert_engine.dart';
 import '../../data/database/app_database.dart';
 import '../../state/providers.dart';
+import 'widgets/transaction_activity_heatmap.dart';
 import '../history/manual_expense_entry_screen.dart';
 import '../history/transaction_detail_screen.dart';
 import '../pay/pay_screen.dart';
@@ -122,6 +123,8 @@ class HomeScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 16),
         _DailySpendChart(dailyAsync: dailyAsync),
+        const SizedBox(height: 16),
+        const TransactionActivityHeatmap(),
         const SizedBox(height: 18),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,

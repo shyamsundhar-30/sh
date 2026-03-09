@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- Allow WorkManager to reschedule work after reboot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- Biometric auth -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     
     <application
         android:label="PayTrace"

@@ -100,6 +100,13 @@ final transactionSearchProvider =
   return db.searchTransactions(query);
 });
 
+/// Watch successful transactions for a specific month.
+final monthTransactionsProvider =
+    StreamProvider.family<List<Transaction>, DateTime>((ref, date) {
+  final db = ref.watch(databaseProvider);
+  return db.watchMonthTransactions(date.year, date.month);
+});
+
 // ═══════════════════════════════════════════
 //  SMS SYNC PROVIDER
 // ═══════════════════════════════════════════

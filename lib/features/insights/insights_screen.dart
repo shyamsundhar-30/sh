@@ -1022,6 +1022,14 @@ class _WeekendVsWeekdayCard extends StatelessWidget {
     final maxAmt = max(insight.weekdayTotal, insight.weekendTotal);
     final wdFrac = maxAmt > 0 ? insight.weekdayTotal / maxAmt : 0.0;
     final weFrac = maxAmt > 0 ? insight.weekendTotal / maxAmt : 0.0;
+    final subduedText = Theme.of(context)
+        .colorScheme
+        .onSurface
+        .withValues(alpha: 0.62);
+    final mutedText = Theme.of(context)
+        .colorScheme
+        .onSurface
+        .withValues(alpha: 0.42);
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -1032,17 +1040,18 @@ class _WeekendVsWeekdayCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header + tag
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Weekend vs Weekday',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
+              Expanded(
+                child: Text(
+                  'Weekend vs Weekday',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
               ),
+              const SizedBox(width: 12),
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -1064,7 +1073,6 @@ class _WeekendVsWeekdayCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          // Amounts
           Row(
             children: [
               Expanded(
@@ -1073,9 +1081,10 @@ class _WeekendVsWeekdayCard extends StatelessWidget {
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: Colors.white70),
+                      ?.copyWith(color: subduedText),
                 ),
               ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Weekend: ${Formatters.currency(insight.weekendTotal)}',
@@ -1083,100 +1092,38 @@ class _WeekendVsWeekdayCard extends StatelessWidget {
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: Colors.white70),
+                      ?.copyWith(color: subduedText),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-
-          // Two large side-by-side bars
+          const SizedBox(height: 18),
           SizedBox(
-            height: 140,
+            height: 172,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // Weekday bar
                 Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Text(
-                        Formatters.currencyCompact(insight.weekdayTotal),
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: _weekdayColor,
-                            ),
-                      ),
-                      const SizedBox(height: 4),
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 400),
-                        curve: Curves.easeOutCubic,
-                        height: max(8, 100 * wdFrac),
-                        decoration: BoxDecoration(
-                          color: _weekdayColor,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text('Weekdays',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
-                      Text(
-                        '${insight.weekdayTxnCount} txns · ${Formatters.currency(insight.weekdayAvgPerDay)}/day',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(fontSize: 10, color: Colors.white38),
-                      ),
-                    ],
+                  child: _WeekendWeekdayBarColumn(
+                    label: 'Weekdays',
+                    amount: Formatters.currencyCompact(insight.weekdayTotal),
+                    detail:
+                        '${insight.weekdayTxnCount} txns · ${Formatters.currencyCompact(insight.weekdayAvgPerDay)}/day',
+                    fraction: wdFrac,
+                    color: _weekdayColor,
+                    mutedText: mutedText,
                   ),
                 ),
                 const SizedBox(width: 24),
-                // Weekend bar
                 Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Text(
-                        Formatters.currencyCompact(insight.weekendTotal),
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: _weekendColor,
-                            ),
-                      ),
-                      const SizedBox(height: 4),
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 400),
-                        curve: Curves.easeOutCubic,
-                        height: max(8, 100 * weFrac),
-                        decoration: BoxDecoration(
-                          color: _weekendColor,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text('Weekends',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
-                      Text(
-                        '${insight.weekendTxnCount} txns · ${Formatters.currency(insight.weekendAvgPerDay)}/day',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(fontSize: 10, color: Colors.white38),
-                      ),
-                    ],
+                  child: _WeekendWeekdayBarColumn(
+                    label: 'Weekends',
+                    amount: Formatters.currencyCompact(insight.weekendTotal),
+                    detail:
+                        '${insight.weekendTxnCount} txns · ${Formatters.currencyCompact(insight.weekendAvgPerDay)}/day',
+                    fraction: weFrac,
+                    color: _weekendColor,
+                    mutedText: mutedText,
                   ),
                 ),
               ],
@@ -1184,6 +1131,88 @@ class _WeekendVsWeekdayCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _WeekendWeekdayBarColumn extends StatelessWidget {
+  const _WeekendWeekdayBarColumn({
+    required this.label,
+    required this.amount,
+    required this.detail,
+    required this.fraction,
+    required this.color,
+    required this.mutedText,
+  });
+
+  final String label;
+  final String amount;
+  final String detail;
+  final double fraction;
+  final Color color;
+  final Color mutedText;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Text(
+          amount,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 96,
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 114),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeOutCubic,
+                height: max(12, 88 * fraction),
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.18),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          detail,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontSize: 10,
+                color: mutedText,
+              ),
+        ),
+      ],
     );
   }
 }

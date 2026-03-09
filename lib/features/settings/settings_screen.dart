@@ -10,6 +10,54 @@ import '../../state/providers.dart';
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
+  Future<void> _showBudgetDialog(
+    BuildContext context,
+    WidgetRef ref,
+    DateTime now,
+    double? currentAmount,
+  ) async {
+    final controller = TextEditingController(
+      text: currentAmount != null ? currentAmount.toStringAsFixed(0) : '',
+    );
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Set Monthly Budget — ${Formatters.monthYear(now)}'),
+        content: TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          autofocus: true,
+          decoration: const InputDecoration(
+            prefixText: '₹ ',
+            hintText: 'Enter budget amount',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = double.tryParse(controller.text.trim());
+              if (value != null && value > 0) {
+                Navigator.pop(ctx, value);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (result != null) {
+      final db = ref.read(databaseProvider);
+      await db.upsertBudget(now.year, now.month, result);
+      ref.invalidate(monthlyBudgetProvider(DateTime(now.year, now.month)));
+      ref.invalidate(budgetProgressProvider(DateTime(now.year, now.month)));
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final now = DateTime.now();
@@ -41,29 +89,41 @@ class SettingsScreen extends ConsumerWidget {
                     ),
               ),
               const SizedBox(height: 10),
-              SegmentedButton<ThemeMode>(
-                showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(
-                    value: ThemeMode.system,
-                    icon: Icon(Icons.phone_android_rounded, size: 16),
-                    label: Text('System'),
+              SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<ThemeMode>(
+                  showSelectedIcon: false,
+                  style: ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: WidgetStatePropertyAll(
+                      Theme.of(context).textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
                   ),
-                  ButtonSegment(
-                    value: ThemeMode.dark,
-                    icon: Icon(Icons.dark_mode_rounded, size: 16),
-                    label: Text('Dark'),
-                  ),
-                  ButtonSegment(
-                    value: ThemeMode.light,
-                    icon: Icon(Icons.light_mode_rounded, size: 16),
-                    label: Text('Light'),
-                  ),
-                ],
-                selected: {themeMode},
-                onSelectionChanged: (selection) {
-                  ref.read(themeModeProvider.notifier).setThemeMode(selection.first);
-                },
+                  segments: const [
+                    ButtonSegment(
+                      value: ThemeMode.system,
+                      icon: Icon(Icons.phone_android_rounded, size: 14),
+                      label: Text('System'),
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.dark,
+                      icon: Icon(Icons.dark_mode_rounded, size: 14),
+                      label: Text('Dark'),
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.light,
+                      icon: Icon(Icons.light_mode_rounded, size: 14),
+                      label: Text('Light'),
+                    ),
+                  ],
+                  selected: {themeMode},
+                  onSelectionChanged: (selection) {
+                    ref.read(themeModeProvider.notifier).setThemeMode(selection.first);
+                  },
+                ),
               ),
             ],
           ),
@@ -80,6 +140,12 @@ class SettingsScreen extends ConsumerWidget {
                 title: title,
                 subtitle: Formatters.monthYear(now),
                 trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => _showBudgetDialog(
+                  context,
+                  ref,
+                  now,
+                  budget?.limitAmount,
+                ),
               );
             },
             loading: () => const _Tile(

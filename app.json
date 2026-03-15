@@ -1,0 +1,30 @@
+{
+  "expo": {
+  "name": "StrideMate",
+  "slug": "stridemate",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "platforms": ["ios", "android", "web"],
+  "sdkVersion": "48.0.0",
+    "android": {
+      "package": "com.stridemate.app",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "INTERNET"
+      ],
+      "versionCode": 1,
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_GOES_HERE"
+        }
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.stridemate.app",
+      "config": {
+        "googleMapsApiKey": "YOUR_GOOGLE_MAPS_API_KEY_GOES_HERE"
+      }
+    }
+  }
+}
